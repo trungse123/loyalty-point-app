@@ -58,7 +58,7 @@ app.post('/webhook/order', async (req, res) => {
     const fulfilled = ['fulfilled', 'delivered'].includes(order.fulfillment_status);
 
     if (!phone || !paid || !fulfilled) {
-      console.log(`⚠️ Bỏ qua đơn không hợp lệ\nSĐT: ${phone}\nThanh toán: ${order.financial_status}\nGiao hàng: ${order.fulfillment_status}`);
+      console.log(⚠️ Bỏ qua đơn không hợp lệ\nSĐT: ${phone}\nThanh toán: ${order.financial_status}\nGiao hàng: ${order.fulfillment_status}`);
       return res.status(200).send('❌ Bỏ qua đơn không hợp lệ');
     }
 
@@ -88,7 +88,7 @@ app.post('/webhook/order', async (req, res) => {
   }
 });
 
-// === API: TRA CỨU ĐIỂM ===
+// === ĐỔI ĐIỂM ===
 app.post('/redeem', async (req, res) => {
   const { phone, points } = req.body;
 
@@ -103,7 +103,7 @@ app.post('/redeem', async (req, res) => {
     }
 
     const code = 'VOUCHER-' + crypto.randomBytes(3).toString('hex').toUpperCase();
-    const discountValue = points; // Giữ logic: 1 điểm = 1 VNĐ
+    const discountValue = points;
 
     const haravanResponse = await axios.post(
       `https://${SHOP}/admin/discounts.json`,
@@ -145,7 +145,27 @@ app.post('/redeem', async (req, res) => {
   }
 });
 
-// === START SERVER ===
+// === LẤY THÔNG TIN NGƯỜI DÙNG ===
+app.get('/points', async (req, res) => {
+  const { phone } = req.query;
+  if (!phone) return res.status(400).json({ error: 'Thiếu số điện thoại' });
+
+  try {
+    const user = await UserPoints.findOne({ phone });
+    if (!user) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
+
+    res.json({
+      phone: user.phone,
+      email: user.email,
+      total_points: user.total_points,
+      history: user.history
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi hệ thống' });
+  }
+});
+
+// === KHỞI ĐỘNG SERVER ===
 app.listen(PORT, () => {
-  console.log(`✅ Server đang chạy tại http://localhost:${PORT}`);
+  console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
 });
