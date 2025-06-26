@@ -117,19 +117,17 @@ app.post('/redeem', async (req, res) => {
     }
 
     const code = 'VOUCHER-' + crypto.randomBytes(3).toString('hex').toUpperCase();
-    const discountValue = points;
+    const discountValue = points; // Giữ logic: 1 điểm = 1 VNĐ
 
     const haravanResponse = await axios.post(
       `https://${SHOP}/admin/discounts.json`,
       {
         discount: {
           code: code,
-          starts_at: new Date().toISOString(),
-          usage_limit: 1,
-          value_type: 'fixed_amount',
-          value: discountValue.toString(),
-          customer_selection: 'all',
-          applies_once: true
+          discount_type: "fixed_amount",
+          value: discountValue,
+          minimum_order_amount: 0,
+          starts_at: new Date().toISOString()
         }
       },
       {
