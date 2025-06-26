@@ -88,7 +88,28 @@ app.post('/webhook/order', async (req, res) => {
   }
 });
 
-// === ĐỔI ĐIỂM ===
+// === API: TRA CỨU ĐIỂM ===
+app.get('/points', async (req, res) => {
+  const { phone } = req.query;
+  if (!phone) return res.status(400).json({ error: 'Thiếu số điện thoại' });
+
+  try {
+    const user = await UserPoints.findOne({ phone });
+    if (!user) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
+
+    res.json({
+      phone: user.phone,
+      email: user.email,
+      total_points: user.total_points,
+      history: user.history || []
+    });
+  } catch (err) {
+    console.error('❌ Lỗi tra điểm:', err.message);
+    res.status(500).json({ error: 'Không thể lấy dữ liệu điểm' });
+  }
+});
+
+// === API: ĐỔI ĐIỂM LẤY VOUCHER ===
 app.post('/redeem', async (req, res) => {
   const { phone, points } = req.body;
 
@@ -150,7 +171,7 @@ app.post('/redeem', async (req, res) => {
   }
 });
 
-// === KHỞI ĐỘNG SERVER ===
+// === START SERVER ===
 app.listen(PORT, () => {
-  console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
+  console.log(`✅ Server đang chạy tại http://localhost:${PORT}`);
 });
