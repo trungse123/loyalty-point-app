@@ -58,7 +58,7 @@ app.post('/webhook/order', async (req, res) => {
     const fulfilled = ['fulfilled', 'delivered'].includes(order.fulfillment_status);
 
     if (!phone || !paid || !fulfilled) {
-      console.log(⚠️ Bỏ qua đơn không hợp lệ\nSĐT: ${phone}\nThanh toán: ${order.financial_status}\nGiao hàng: ${order.fulfillment_status}`);
+      console.log(`⚠️ Bỏ qua đơn không hợp lệ\nSĐT: ${phone}\nThanh toán: ${order.financial_status}\nGiao hàng: ${order.fulfillment_status}`);
       return res.status(200).send('❌ Bỏ qua đơn không hợp lệ');
     }
 
