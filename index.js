@@ -113,7 +113,12 @@ app.post('/redeem', async (req, res) => {
           discount_type: "fixed_amount",
           value: discountValue,
           minimum_order_amount: 0,
-          starts_at: new Date().toISOString()
+          starts_at: new Date().toISOString(),
+
+          // ✅ Giới hạn mã
+          usage_limit: 1, // chỉ dùng 1 lần
+          customer_selection: "prerequisite", // chỉ định người dùng
+          prerequisite_customer_emails: [user.email] // chỉ cho email này dùng
         }
       },
       {
@@ -144,7 +149,6 @@ app.post('/redeem', async (req, res) => {
     res.status(500).json({ error: 'Không tạo được voucher' });
   }
 });
-
 // === LẤY THÔNG TIN NGƯỜI DÙNG ===
 app.get('/points', async (req, res) => {
   const { phone } = req.query;
