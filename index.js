@@ -12,12 +12,17 @@ const SHOP = 'neko-chin-shop-5.myharavan.com';
 const ACCESS_TOKEN = 'DFE528F8C4CBA1B43727A729CD57187766E059E88AE96682DC2CF04AF4F61306';
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://admin:admin1234@cluster0.edubkxs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
-// === DB CONNECT ===
+// === MONGODB CONNECT ===
 mongoose.connect(MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
-}).then(() => console.log('✅ Kết nối MongoDB thành công'))
-  .catch((err) => console.error('❌ MongoDB lỗi:', err.message));
+})
+  .then(() => console.log('✅ Đã kết nối MongoDB'))
+  .catch((err) => console.error('❌ Lỗi kết nối MongoDB:', err.message));
+
+// === MIDDLEWARE ===
+app.use(cors());
+app.use(express.json());
 
 // === SCHEMA ===
 const UserPointsSchema = new mongoose.Schema({
@@ -34,16 +39,12 @@ const UserPointsSchema = new mongoose.Schema({
 });
 const UserPoints = mongoose.model('UserPoints', UserPointsSchema);
 
-// === MIDDLEWARE ===
-app.use(cors());
-app.use(express.json());
-
-// === WEBHOOK: HARAVAN GỬI KHI ĐƠN HÀNG HOÀN TẤT ===
+// === WEBHOOK: ĐƠN HÀNG HARAVAN ===
 app.post('/webhook/order', async (req, res) => {
-  console.log('🔥 [Webhook] Nhận dữ liệu từ Haravan');
-  console.log(JSON.stringify(req.body, null, 2)); // In toàn bộ JSON
-
   try {
+    console.log('📦 [Webhook] Nhận dữ liệu từ Haravan:');
+    console.dir(req.body, { depth: null });
+
     const order = req.body;
     const customer = order.customer || {};
     const billing = order.billing_address || {};
@@ -53,14 +54,12 @@ app.post('/webhook/order', async (req, res) => {
     const total = parseInt(order.total_price || 0);
     const points = Math.floor(total / 100);
 
-    console.log(`➡️ Số điện thoại: ${phone}`);
-    console.log(`➡️ Trạng thái thanh toán: ${order.financial_status}`);
-    console.log(`➡️ Trạng thái giao hàng: ${order.fulfillment_status}`);
-    console.log(`➡️ Tổng tiền: ${total} => Cộng: ${points} điểm`);
+    const paid = order.financial_status === 'paid';
+    const fulfilled = ['fulfilled', 'delivered'].includes(order.fulfillment_status);
 
-    if (!phone || order.financial_status !== 'paid' || !['fulfilled', 'delivered'].includes(order.fulfillment_status)) {
-      console.log('⚠️ Bỏ qua đơn không hợp lệ');
-      return res.status(200).send('Bỏ qua đơn');
+    if (!phone || !paid || !fulfilled) {
+      console.log(`⚠️ Bỏ qua đơn không hợp lệ\nSĐT: ${phone}\nThanh toán: ${order.financial_status}\nGiao hàng: ${order.fulfillment_status}`);
+      return res.status(200).send('❌ Bỏ qua đơn không hợp lệ');
     }
 
     const user = await UserPoints.findOne({ phone });
@@ -71,9 +70,6 @@ app.post('/webhook/order', async (req, res) => {
         user.total_points += points;
         user.history.push({ order_id, earned_points: points, timestamp: new Date() });
         await user.save();
-        console.log(`✅ Cộng ${points} điểm cho: ${phone}`);
-      } else {
-        console.log('⚠️ Đơn đã được cộng điểm trước đó');
       }
     } else {
       await UserPoints.create({
@@ -82,22 +78,17 @@ app.post('/webhook/order', async (req, res) => {
         total_points: points,
         history: [{ order_id, earned_points: points, timestamp: new Date() }]
       });
-      console.log(`✅ Tạo mới và cộng ${points} điểm cho: ${phone}`);
     }
 
-    res.status(200).send('Xử lý xong');
+    console.log(`✅ Cộng ${points} điểm cho: ${phone}`);
+    res.status(200).send('Đã xử lý xong');
   } catch (err) {
     console.error('❌ Webhook lỗi:', err.message);
-    res.status(500).send('Webhook lỗi');
+    res.status(500).send('Lỗi webhook');
   }
 });
 
-// === TEST GET WEBHOOK (chỉ để thử, không dùng trong thực tế)
-app.get('/webhook/order', (req, res) => {
-  res.status(405).send('Không hỗ trợ GET. Hãy dùng POST từ Haravan Webhook.');
-});
-
-// === API: LẤY ĐIỂM NGƯỜI DÙNG ===
+// === API: TRA CỨU ĐIỂM ===
 app.get('/points', async (req, res) => {
   const { phone } = req.query;
   if (!phone) return res.status(400).json({ error: 'Thiếu số điện thoại' });
@@ -113,12 +104,71 @@ app.get('/points', async (req, res) => {
       history: user.history || []
     });
   } catch (err) {
-    console.error('❌ /points lỗi:', err.message);
-    res.status(500).json({ error: 'Không thể lấy điểm' });
+    console.error('❌ Lỗi tra điểm:', err.message);
+    res.status(500).json({ error: 'Không thể lấy dữ liệu điểm' });
   }
 });
 
-// === KHỞI ĐỘNG SERVER ===
+// === API: ĐỔI ĐIỂM LẤY VOUCHER ===
+app.post('/redeem', async (req, res) => {
+  const { phone, points } = req.body;
+
+  if (!phone || !points || isNaN(points)) {
+    return res.status(400).json({ error: 'Thiếu thông tin hoặc điểm không hợp lệ' });
+  }
+
+  try {
+    const user = await UserPoints.findOne({ phone });
+    if (!user || user.total_points < points) {
+      return res.status(400).json({ error: 'Không đủ điểm để đổi' });
+    }
+
+    const code = 'VOUCHER-' + crypto.randomBytes(3).toString('hex').toUpperCase();
+    const discountValue = points;
+
+    const haravanResponse = await axios.post(
+      `https://${SHOP}/admin/discounts.json`,
+      {
+        discount: {
+          code: code,
+          starts_at: new Date().toISOString(),
+          usage_limit: 1,
+          value_type: 'fixed_amount',
+          value: discountValue.toString(),
+          customer_selection: 'all',
+          applies_once: true
+        }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${ACCESS_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    user.total_points -= points;
+    user.history.push({
+      order_id: `REDEEM-${code}`,
+      earned_points: -points,
+      timestamp: new Date()
+    });
+
+    await user.save();
+
+    res.json({
+      message: '🎉 Đổi điểm thành công',
+      code,
+      value: `${discountValue}đ`,
+      haravan_discount: haravanResponse.data.discount
+    });
+  } catch (err) {
+    console.error('❌ Lỗi đổi điểm:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Không tạo được voucher' });
+  }
+});
+
+// === START SERVER ===
 app.listen(PORT, () => {
-  console.log(`🚀 Server chạy tại http://localhost:${PORT}`);
+  console.log(`✅ Server đang chạy tại http://localhost:${PORT}`);
 });
