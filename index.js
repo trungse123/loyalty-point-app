@@ -123,20 +123,19 @@ app.post('/redeem', async (req, res) => {
       return res.status(400).json({ error: 'Không đủ điểm để đổi' });
     }
 
-    const code = 'VOUCHER-' + crypto.randomBytes(3).toString('hex').toUpperCase();
-    const discountValue = points;
+    const code = `VOUCHER${Math.floor(Math.random() * 100000)}`;
+    const discountValue = points; // giả sử 1 điểm = 1đ
 
-    const haravanResponse = await axios.post(
+    // Tạo mã giảm giá mới theo cách đơn giản như haravan.js
+    const voucherRes = await axios.post(
       `https://${SHOP}/admin/discounts.json`,
       {
         discount: {
-          code: code,
-          starts_at: new Date().toISOString(),
-          usage_limit: 1,
-          value_type: 'fixed_amount',
-          value: discountValue.toString(),
-          customer_selection: 'all',
-          applies_once: true
+          code,
+          discount_type: "fixed_amount",
+          value: discountValue,
+          minimum_order_amount: 1000,
+          starts_at: new Date().toISOString()
         }
       },
       {
@@ -147,26 +146,27 @@ app.post('/redeem', async (req, res) => {
       }
     );
 
+    // Trừ điểm và lưu lịch sử
     user.total_points -= points;
     user.history.push({
       order_id: `REDEEM-${code}`,
       earned_points: -points,
       timestamp: new Date()
     });
-
     await user.save();
 
     res.json({
       message: '🎉 Đổi điểm thành công',
       code,
       value: `${discountValue}đ`,
-      haravan_discount: haravanResponse.data.discount
+      haravan_discount: voucherRes.data.discount
     });
   } catch (err) {
-    console.error('❌ Lỗi đổi điểm:', err.response?.data || err.message);
-    res.status(500).json({ error: 'Không tạo được voucher' });
+    console.error('❌ Lỗi tạo voucher:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Không tạo được voucher', details: err.response?.data || err.message });
   }
 });
+
 
 // === START SERVER ===
 app.listen(PORT, () => {
