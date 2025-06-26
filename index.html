@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Điểm Thưởng</title>
+  <style>
+    body { font-family: sans-serif; background: #eef; padding: 20px; text-align: center; }
+    input, button { padding: 10px; margin: 10px; font-size: 16px; }
+    #result { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h2>🎁 Kiểm tra điểm thưởng</h2>
+  <input type="text" id="phone" placeholder="Nhập số điện thoại">
+  <button onclick="checkPoints()">Tra cứu</button>
+  <div id="result"></div>
+
+  <script>
+    async function checkPoints() {
+      const phone = document.getElementById('phone').value;
+      const res = await fetch('/points?phone=' + phone);
+      const data = await res.json();
+      document.getElementById('result').innerHTML =
+        `<p><strong>Điểm:</strong> ${data.total_points}</p>`;
+    }
+  </script>
+</body>
+</html>
