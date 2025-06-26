@@ -102,23 +102,31 @@ app.post('/redeem', async (req, res) => {
       return res.status(400).json({ error: 'Không đủ điểm để đổi' });
     }
 
+    // 🔍 Tìm ID khách hàng trên Haravan qua email
+    const searchRes = await axios.get(`https://${SHOP}/admin/customers/search.json?query=email:${user.email}`, {
+      headers: {
+        Authorization: `Bearer ${ACCESS_TOKEN}`
+      }
+    });
+    const customerId = searchRes.data.customers[0]?.id;
+    if (!customerId) return res.status(400).json({ error: 'Không tìm thấy khách hàng trên Haravan' });
+
     const code = 'VOUCHER-' + crypto.randomBytes(3).toString('hex').toUpperCase();
     const discountValue = points;
 
+    // 🎯 Tạo mã voucher giới hạn khách hàng
     const haravanResponse = await axios.post(
       `https://${SHOP}/admin/discounts.json`,
       {
         discount: {
-          code: code,
+          code,
           discount_type: "fixed_amount",
           value: discountValue,
           minimum_order_amount: 0,
           starts_at: new Date().toISOString(),
-
-          // ✅ Giới hạn mã
-          usage_limit: 1, // chỉ dùng 1 lần
-          customer_selection: "prerequisite", // chỉ định người dùng
-          prerequisite_customer_emails: [user.email] // chỉ cho email này dùng
+          usage_limit: 1,
+          customer_selection: "prerequisite",
+          prerequisite_customer_ids: [customerId] // ✅ chỉ định khách hàng
         }
       },
       {
@@ -147,25 +155,6 @@ app.post('/redeem', async (req, res) => {
   } catch (err) {
     console.error('❌ Lỗi đổi điểm:', err.response?.data || err.message);
     res.status(500).json({ error: 'Không tạo được voucher' });
-  }
-});
-// === LẤY THÔNG TIN NGƯỜI DÙNG ===
-app.get('/points', async (req, res) => {
-  const { phone } = req.query;
-  if (!phone) return res.status(400).json({ error: 'Thiếu số điện thoại' });
-
-  try {
-    const user = await UserPoints.findOne({ phone });
-    if (!user) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
-
-    res.json({
-      phone: user.phone,
-      email: user.email,
-      total_points: user.total_points,
-      history: user.history
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Lỗi hệ thống' });
   }
 });
 
