@@ -1,21 +1,30 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const cors = require('cors');
 const axios = require('axios');
 const crypto = require('crypto');
-const path = require('path');
+
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
-// === CONFIG FROM ENV ===
-const SHOP = process.env.HARAVAN_SHOP;
-const ACCESS_TOKEN = process.env.HARAVAN_ACCESS_TOKEN;
-const MONGO_URI = process.env.MONGO_URI;
+// === CONFIG ===
+const SHOP = 'neko-chin-shop-5.myharavan.com';
+const ACCESS_TOKEN = 'DFE528F8C4CBA1B43727A729CD57187766E059E88AE96682DC2CF04AF4F61306';
+const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://admin:admin1234@cluster0.edubkxs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
-// === CONNECT TO MONGO ===
-mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('✅ MongoDB connected'))
-  .catch(err => console.error('❌ MongoDB error:', err.message));
+// === MONGODB CONNECT ===
+mongoose.connect(MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+  .then(() => console.log('✅ Đã kết nối MongoDB'))
+  .catch((err) => console.error('❌ Lỗi kết nối MongoDB:', err.message));
 
+// === MIDDLEWARE ===
+app.use(cors());
+app.use(express.json());
+
+// === SCHEMA ===
 const UserPointsSchema = new mongoose.Schema({
   phone: { type: String, unique: true },
   email: String,
@@ -30,35 +39,30 @@ const UserPointsSchema = new mongoose.Schema({
 });
 const UserPoints = mongoose.model('UserPoints', UserPointsSchema);
 
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
-// === HARAVAN WEBHOOK ===
+// === WEBHOOK: ĐƠN HÀNG HARAVAN ===
 app.post('/webhook/order', async (req, res) => {
-  const order = req.body;
-  const customer = order.customer || {};
-  const billing = order.billing_address || {};
-  const phone = customer.phone || billing.phone;
-
-  if (
-    order.financial_status !== 'paid' ||
-    !['fulfilled', 'delivered'].includes(order.fulfillment_status) ||
-    !phone
-  ) return res.status(200).send('Skipped');
-
-  const email = customer.email || 'Không có email';
-  const total = parseInt(order.total_price || 0);
-  const points = Math.floor(total / 100);
-  const order_id = order.id;
-
   try {
-    const existing = await UserPoints.findOne({ phone });
-    if (existing) {
-      const already = existing.history.find(h => h.order_id === order_id.toString());
-      if (!already) {
-        existing.total_points += points;
-        existing.history.push({ order_id, earned_points: points, timestamp: new Date() });
-        await existing.save();
+    const order = req.body;
+    const customer = order.customer || {};
+    const billing = order.billing_address || {};
+    const phone = customer.phone || billing.phone;
+    const email = customer.email || 'Không có email';
+    const order_id = order.id?.toString();
+    const total = parseInt(order.total_price || 0);
+    const points = Math.floor(total / 100);
+
+    if (!phone || order.financial_status !== 'paid' || !['fulfilled', 'delivered'].includes(order.fulfillment_status)) {
+      return res.status(200).send('❌ Bỏ qua đơn không hợp lệ');
+    }
+
+    const user = await UserPoints.findOne({ phone });
+
+    if (user) {
+      const existed = user.history.find(h => h.order_id === order_id);
+      if (!existed) {
+        user.total_points += points;
+        user.history.push({ order_id, earned_points: points, timestamp: new Date() });
+        await user.save();
       }
     } else {
       await UserPoints.create({
@@ -69,67 +73,69 @@ app.post('/webhook/order', async (req, res) => {
       });
     }
 
-    console.log(`✅ Webhook: +${points} điểm cho ${phone}`);
-    res.status(200).send('Done');
+    console.log(`✅ Cộng ${points} điểm cho: ${phone}`);
+    res.status(200).send('Đã xử lý xong');
   } catch (err) {
-    console.error('❌ Webhook error:', err.message);
-    res.status(500).send('Error');
+    console.error('❌ Webhook lỗi:', err.message);
+    res.status(500).send('Lỗi webhook');
   }
 });
 
-// === TRA CỨU ===
+// === API: TRA CỨU ĐIỂM ===
 app.get('/points', async (req, res) => {
-  const phone = req.query.phone;
-  if (!phone) return res.status(400).send('Missing phone');
+  const { phone } = req.query;
+  if (!phone) return res.status(400).json({ error: 'Thiếu số điện thoại' });
 
   try {
     const user = await UserPoints.findOne({ phone });
-    if (!user) return res.status(404).send('Not found');
+    if (!user) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
 
     res.json({
       phone: user.phone,
       email: user.email,
       total_points: user.total_points,
-      history: user.history
+      history: user.history || []
     });
   } catch (err) {
-    res.status(500).send('Query error');
+    console.error('❌ Lỗi tra điểm:', err.message);
+    res.status(500).json({ error: 'Không thể lấy dữ liệu điểm' });
   }
 });
 
-// === ĐỔI ĐIỂM ===
+// === API: ĐỔI ĐIỂM LẤY VOUCHER ===
 app.post('/redeem', async (req, res) => {
   const { phone, points } = req.body;
+
   if (!phone || !points || isNaN(points)) {
-    return res.status(400).json({ error: 'Invalid data' });
+    return res.status(400).json({ error: 'Thiếu thông tin hoặc điểm không hợp lệ' });
   }
 
   try {
     const user = await UserPoints.findOne({ phone });
-
     if (!user || user.total_points < points) {
-      return res.status(400).json({ error: 'Insufficient points' });
+      return res.status(400).json({ error: 'Không đủ điểm để đổi' });
     }
 
     const code = 'VOUCHER-' + crypto.randomBytes(3).toString('hex').toUpperCase();
+    const discountValue = points;
 
-    const response = await axios.post(
+    const haravanResponse = await axios.post(
       `https://${SHOP}/admin/discounts.json`,
       {
         discount: {
-          code,
+          code: code,
           starts_at: new Date().toISOString(),
           usage_limit: 1,
           value_type: 'fixed_amount',
-          value: points.toString(),
+          value: discountValue.toString(),
           customer_selection: 'all',
           applies_once: true
         }
       },
       {
         headers: {
-          'Authorization': `Bearer ${ACCESS_TOKEN}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${ACCESS_TOKEN}`,
+          'Content-Type': 'application/json'
         }
       }
     );
@@ -140,20 +146,22 @@ app.post('/redeem', async (req, res) => {
       earned_points: -points,
       timestamp: new Date()
     });
+
     await user.save();
 
     res.json({
-      message: 'Redeemed successfully',
+      message: '🎉 Đổi điểm thành công',
       code,
-      value: `${points}đ`,
-      haravan_discount: response.data.discount
+      value: `${discountValue}đ`,
+      haravan_discount: haravanResponse.data.discount
     });
   } catch (err) {
-    console.error('❌ Redeem error:', err.message);
-    res.status(500).send('Redeem failed');
+    console.error('❌ Lỗi đổi điểm:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Không tạo được voucher' });
   }
 });
 
+// === START SERVER ===
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+  console.log(`✅ Server đang chạy tại http://localhost:${PORT}`);
 });
