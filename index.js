@@ -49,7 +49,7 @@ app.post('/webhook/order', async (req, res) => {
     const customer = order.customer || {};
     const billing = order.billing_address || {};
     const phone = customer.phone || billing.phone;
-    const email = customer.email || 'Không có email';
+    const email = customer.email || null;
     const order_id = order.id?.toString();
     const total = parseInt(order.total_price || 0);
     const points = Math.floor(total / 100);
@@ -122,7 +122,9 @@ app.post('/redeem', async (req, res) => {
     if (!user || user.total_points < points) {
       return res.status(400).json({ error: 'Không đủ điểm để đổi' });
     }
-
+    if (!user.email) {
+      return res.status(400).json({ error: 'Người dùng chưa có email, không thể tạo voucher' });
+    }
     const code = 'VOUCHER-' + crypto.randomBytes(3).toString('hex').toUpperCase();
     const discountValue = points;
 
@@ -175,3 +177,6 @@ app.post('/redeem', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Server đang chạy tại http://localhost:${PORT}`);
 });
+
+
+
