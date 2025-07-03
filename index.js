@@ -35,9 +35,32 @@ const UserPointsSchema = new mongoose.Schema({
       earned_points: Number,
       timestamp: Date
     }
+  ],
+  missions: [
+    {
+      mission_key: String,   // daily_login, review_product, share_fb...
+      date: Date,            // Lần cuối hoàn thành
+      points: Number         // Số điểm được cộng
+    }
   ]
 });
 const UserPoints = mongoose.model('UserPoints', UserPointsSchema);
+
+// === BẢNG NHIỆM VỤ (có thể chỉnh điểm tùy ý) ===
+const MissionList = [
+  // --- NHIỆM VỤ HÀNG NGÀY ---
+  { key: 'daily_login',      type: 'daily',    name: 'Đăng nhập mỗi ngày',        points: 100,   max_per_day: 1 },
+  { key: 'share_fb',         type: 'daily',    name: 'Chia sẻ website lên Facebook', points: 150,   max_per_day: 1 },
+  { key: 'review_product',   type: 'daily',    name: 'Đánh giá sản phẩm',         points: 300,   max_per_day: 3 },
+  // --- NHIỆM VỤ THÁNG ---
+  { key: 'monthly_order',    type: 'monthly',  name: 'Hoàn thành 5 đơn hàng trong tháng', points: 2000,  max_per_month: 1 },
+  { key: 'monthly_review',   type: 'monthly',  name: 'Đánh giá 5 sản phẩm trong tháng',   points: 1500,  max_per_month: 1 },
+  // --- NHIỆM VỤ ĐẶC BIỆT ---
+  { key: 'referral',         type: 'special',  name: 'Mời bạn bè đặt đơn đầu tiên (cả 2 cùng nhận)',  points: 5000,  max_per_day: 10 },
+  // ... thêm nhiệm vụ sự kiện tuỳ thích ...
+];
+
+// === GIỮ TOÀN BỘ LOGIC CŨ, BỔ SUNG API NHIỆM VỤ BÊN DƯỚI ===
 
 // === WEBHOOK: ĐƠN HÀNG HARAVAN ===
 app.post('/webhook/order', async (req, res) => {
@@ -62,7 +85,7 @@ app.post('/webhook/order', async (req, res) => {
       return res.status(200).send('❌ Bỏ qua đơn không hợp lệ');
     }
 
-    const user = await UserPoints.findOne({ phone });
+    let user = await UserPoints.findOne({ phone });
 
     if (user) {
       const existed = user.history.find(h => h.order_id === order_id);
@@ -72,12 +95,49 @@ app.post('/webhook/order', async (req, res) => {
         await user.save();
       }
     } else {
-      await UserPoints.create({
+      user = await UserPoints.create({
         phone,
         email,
         total_points: points,
         history: [{ order_id, earned_points: points, timestamp: new Date() }]
       });
+    }
+
+    // === Kiểm tra nhiệm vụ đặc biệt: Referral (Bạn bè mời nhau) ===
+    // Bạn có thể truyền referral_code (sdt của người mời) trong order.note_attributes hoặc order.referral_code
+    // Mỗi khi người được mời hoàn thành đơn đầu tiên => cả 2 cùng nhận
+    const refAttr = (order.note_attributes || []).find(x => x.name === 'referral_code');
+    const referral_code = refAttr?.value || order.referral_code; // Ví dụ bạn lưu mã giới thiệu là SĐT người mời
+
+    if (referral_code && referral_code !== phone) {
+      // Kiểm tra người này đã từng được mời bởi referral_code chưa
+      const alreadyGot = user.missions?.find(m => m.mission_key === 'referral' && m.date && m.referral_by === referral_code);
+      if (!alreadyGot) {
+        // Cộng điểm cho người được mời
+        user.total_points += 5000;
+        user.missions = user.missions || [];
+        user.missions.push({
+          mission_key: 'referral',
+          date: new Date(),
+          points: 5000,
+          referral_by: referral_code
+        });
+        await user.save();
+
+        // Cộng điểm cho người mời (referral_code là sdt)
+        const inviter = await UserPoints.findOne({ phone: referral_code });
+        if (inviter) {
+          inviter.total_points += 5000;
+          inviter.missions = inviter.missions || [];
+          inviter.missions.push({
+            mission_key: 'referral',
+            date: new Date(),
+            points: 5000,
+            referral_to: phone
+          });
+          await inviter.save();
+        }
+      }
     }
 
     console.log(`✅ Cộng ${points} điểm cho: ${phone}`);
@@ -101,7 +161,8 @@ app.get('/points', async (req, res) => {
       phone: user.phone,
       email: user.email,
       total_points: user.total_points,
-      history: user.history || []
+      history: user.history || [],
+      missions: user.missions || []
     });
   } catch (err) {
     console.error('❌ Lỗi tra điểm:', err.message);
@@ -173,10 +234,82 @@ app.post('/redeem', async (req, res) => {
   }
 });
 
+// === API: LẤY DANH SÁCH NHIỆM VỤ + TRẠNG THÁI NGƯỜI DÙNG ===
+app.get('/missions', async (req, res) => {
+  const { phone } = req.query;
+  const user = await UserPoints.findOne({ phone });
+  if (!user) return res.status(404).json({ error: 'Không tìm thấy user' });
+
+  // Mapping trạng thái hoàn thành
+  const today = new Date().toLocaleDateString();
+  const thisMonth = `${new Date().getMonth() + 1}-${new Date().getFullYear()}`;
+
+  const missionStates = MissionList.map(mission => {
+    if (mission.type === 'daily') {
+      const count = (user.missions || []).filter(m =>
+        m.mission_key === mission.key &&
+        new Date(m.date).toLocaleDateString() === today
+      ).length;
+      return { ...mission, completed_today: count >= (mission.max_per_day || 1) };
+    }
+    if (mission.type === 'monthly') {
+      const count = (user.missions || []).filter(m =>
+        m.mission_key === mission.key &&
+        (new Date(m.date).getMonth() + 1) === (new Date().getMonth() + 1) &&
+        (new Date(m.date).getFullYear()) === (new Date().getFullYear())
+      ).length;
+      return { ...mission, completed_this_month: count >= (mission.max_per_month || 1) };
+    }
+    if (mission.type === 'special') {
+      // Tuỳ ý, không hạn chế
+      return { ...mission };
+    }
+    return mission;
+  });
+  res.json(missionStates);
+});
+
+// === API: HOÀN THÀNH NHIỆM VỤ (BẤT KỲ) ===
+app.post('/missions/complete', async (req, res) => {
+  const { phone, mission_key } = req.body;
+  const mission = MissionList.find(m => m.key === mission_key);
+  if (!mission) return res.status(400).json({ error: 'Nhiệm vụ không tồn tại' });
+
+  const user = await UserPoints.findOne({ phone });
+  if (!user) return res.status(404).json({ error: 'Không tìm thấy user' });
+
+  const now = new Date();
+
+  // Logic kiểm tra giới hạn
+  if (mission.type === 'daily') {
+    const doneToday = (user.missions || []).filter(m =>
+      m.mission_key === mission_key &&
+      new Date(m.date).toLocaleDateString() === now.toLocaleDateString()
+    ).length;
+    if (doneToday >= (mission.max_per_day || 1)) {
+      return res.json({ message: 'Đã nhận thưởng nhiệm vụ hôm nay!' });
+    }
+  }
+  if (mission.type === 'monthly') {
+    const doneThisMonth = (user.missions || []).filter(m =>
+      m.mission_key === mission_key &&
+      (new Date(m.date).getMonth() + 1) === (now.getMonth() + 1) &&
+      (new Date(m.date).getFullYear()) === (now.getFullYear())
+    ).length;
+    if (doneThisMonth >= (mission.max_per_month || 1)) {
+      return res.json({ message: 'Đã nhận thưởng nhiệm vụ tháng!' });
+    }
+  }
+
+  user.total_points += mission.points;
+  user.missions = user.missions || [];
+  user.missions.push({ mission_key, date: now, points: mission.points });
+  await user.save();
+
+  res.json({ message: 'Nhận thưởng thành công', points: mission.points, total_points: user.total_points });
+});
+
 // === START SERVER ===
 app.listen(PORT, () => {
   console.log(`✅ Server đang chạy tại http://localhost:${PORT}`);
 });
-
-
-
