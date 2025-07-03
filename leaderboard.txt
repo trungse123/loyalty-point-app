@@ -1,0 +1,575 @@
+<div class="leaderboard-wrap">
+<div class="leaderboard-main-row">
+<div class="leaderboard-root">
+  <div class="leaderboard-title-block">
+    <img class="leaderboard-crown" src="LINK_CROWN">
+    <h1 class="leaderboard-title">
+      <span style="font-size: 1.4em; vertical-align: middle;">🏆</span>
+      Top 20 Khách hàng chi tiêu tháng
+    </h1>
+    <div class="leaderboard-subtitle">LEADERBOARD</div>
+    <img class="leaderboard-fire-corner" src="LINK_FIRE">
+  </div>
+  <div class="leaderboard-table-outer">
+    <table class="leaderboard-table">
+      <thead>
+        <tr>
+          <th>Thứ hạng</th>
+          <th>Khách hàng</th>
+          <th>Số đơn</th>
+          <th>Chi tiêu</th>
+          <th>Hạng thành viên</th>
+        </tr>
+      </thead>
+      <tbody id="leaderboard-body">
+        <tr>
+          <td colspan="5" style="text-align:center;">Đang tải dữ liệu...</td>
+        </tr>
+      </tbody>
+    </table>
+    <button class="btn-xem-them" id="btn-xem-them" style="display:none;">
+      <img src="LINK_XEM_THEM" alt="Xem thêm" />
+    </button>
+  </div>
+  <img class="leaderboard-mascot" src="LINK_MASCOT" />
+</div>
+  <div class="leaderboard-info-row">
+  <div class="your-rank-block" id="your-rank-info"></div>
+ <div class="reward-block">
+    <div class="reward-title"><span style="font-size:1.3em;">🎁</span> Giải thưởng tháng này</div>
+    <div class="reward-item"><span style="font-size:1.1em;">🥇 Top 1:</span> Tặng <b>voucher giảm 300k</b> cho đơn 0đ</div>
+    <div class="reward-item"><span style="font-size:1.1em;">🥈 Top 2:</span> Tặng <b>voucher giảm 200k</b> cho đơn 0đ</div>
+    <div class="reward-item"><span style="font-size:1.1em;">🥉 Top 3:</span> Tặng <b>voucher giảm 100k</b> cho đơn 0đ</div>
+  </div>
+</div>
+<!-- 2. STYLE - VÀNG, ĐÁNG YÊU, SẠCH SẼ, ĐẸP -->
+<style>
+  .leaderboard-info-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 32px;
+  width: 100%;
+  margin: 32px 0 0 0;
+}
+
+.your-rank-block, .reward-block {
+  /* width: 270px; */    /* Nếu muốn, hoặc giữ min/max width như cũ */
+  /* min-width/max-width đã ổn */
+}
+
+@media (max-width: 800px) {
+  .leaderboard-info-row {
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    margin: 18px 0 0 0;
+  }
+}
+  .your-rank-block {
+  min-width: 210px;
+  max-width: 260px;
+  background: #f2f5ff;
+  border-radius: 18px;
+  box-shadow: 0 6px 30px #e3eafe21;
+  padding: 20px 17px 12px 17px;
+  font-size: 1rem;
+  color: #364673;
+  margin-bottom: 18px;
+  margin-left: 0;
+  margin-right: 0;
+}
+.your-rank-block .top-label { font-weight: 700; color: #ff871c;}
+.your-rank-block .spent-label { color: #d69b25; font-weight: bold; }
+
+  .leaderboard-wrap {
+  background: #fff;
+  border-radius: 24px;
+  box-shadow: 0 8px 40px #d9bc7020, 0 1.5px 12px #fff8e1a8;
+  padding: 32px 32px 26px 32px;
+  margin: 0 auto 48px auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  max-width: 1100px;
+  width: 100%;
+}
+
+@media (max-width: 600px) {
+  .leaderboard-wrap {
+    display: block;        /* CHUYỂN TỪ flex thành block */
+    padding: 10px 2vw 16vw 2vw;  /* Thu gọn padding cho mobile */
+    max-width: 100vw;
+    box-sizing: border-box;
+    border-radius: 12px;
+  }
+  .leaderboard-main-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    max-width: 100vw;
+    width: 100%;
+    margin: 0;
+    gap: 16px;
+  }
+  .leaderboard-root {
+    max-width: 100vw !important;
+    width: 100% !important;
+    margin: 0 auto 16px auto;
+    border-radius: 10px;
+    min-width: unset;
+  }
+}
+.reward-block {
+  min-width: 210px;
+  max-width: 260px;
+  background: #fff8e3;
+  border-radius: 18px;
+  box-shadow: 0 6px 30px #ffe97c21;
+  padding: 20px 17px 12px 17px;
+  font-size: 1rem;
+  color: #d69b25;
+  font-family: inherit;
+  height: fit-content;
+}
+
+.reward-title {
+  font-weight: 700;
+  font-size: 1.12em;
+  color: #e6ad28;
+  margin-bottom: 10px;
+  letter-spacing: 0.2px;
+}
+
+.reward-item {
+  margin-bottom: 7px;
+  color: #9c7c22;
+  line-height: 1.5;
+  font-size: 1em;
+}
+.reward-item span { font-weight: bold; }
+.reward-item b { color: #ff871c; font-weight: bold; }
+
+/* Điều chỉnh bảng cho vừa khối mới */
+.leaderboard-table th,
+.leaderboard-table td {
+  padding: 7px 9px;
+  font-size: 0.97rem;
+}
+
+/* Responsive cho màn nhỏ */
+@media (max-width: 1050px) {
+  .leaderboard-main-row { flex-direction: column; align-items: center; max-width: 98vw; }
+  .leaderboard-root { width: 95vw; max-width: 99vw; }
+  .reward-block { width: 96vw; max-width: 99vw; margin-top: 20px; }
+}
+  .leaderboard-root {
+    width: 800px;
+    margin: 5px auto;
+    padding: 30px 0 60px;
+    background: url('https://file.hstatic.net/200001023438/file/_1311_kawaii_neko_dreamscape_simple_compose_01jyg8x69tfajsrbf38yf6gfx2.png') center/cover no-repeat
+    , url('LINK_EFFECT_VANG') center/92% no-repeat;
+    border-radius: 22px;
+    box-shadow: 0 0 40px #f8e7a644;
+    position: relative;
+    font-family: 'Quicksand'
+    , Arial
+    , sans-serif;
+    overflow: visible;
+  }
+  .leaderboard-title-block {
+    text-align: center;
+    position: relative;
+    margin-bottom: 0;
+  }
+  .leaderboard-title {
+    font-size: 2.1rem;
+    color: #904c00;
+    font-weight: 700;
+    margin-top: 0;
+    margin-bottom: 5px;
+    text-shadow: 1px 1px 12px #fffbe599, 0 1px 0 #ffe5bb;
+    letter-spacing: 1px;
+  }
+  .leaderboard-crown {
+    width: 52px;
+    position: absolute;
+    left: 35px;
+    top: -18px;
+    display: none
+  }
+  .leaderboard-fire-corner {
+    width: 50px;
+    position: absolute;
+    right: -10px;
+    top: 0px;
+  }
+  .leaderboard-subtitle {
+    font-size: 2.5rem;
+    letter-spacing: 5px;
+    font-weight: bold;
+    color: #c94e00;
+    opacity: 0.39;
+    margin-top: 0;
+    margin-bottom: 16px;
+  }
+
+  .leaderboard-table-outer {
+    margin: 0 auto;
+    padding: 16px 18px 0;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.89);
+    box-shadow: 0 6px 48px #ffe97c21;
+    position: relative;
+  }
+  .leaderboard-table {
+    width: 100%;
+    border-radius: 12px;
+    border-collapse: separate;
+    overflow: hidden;
+    font-size: 1.07rem;
+    background: transparent;
+  }
+  .leaderboard-table th,
+  .leaderboard-table td {
+    padding: 8px 12px;
+    text-align: center;
+    vertical-align: middle;
+  }
+  .leaderboard-table th {
+    background: #ffe9b7;
+    font-size: 1.11rem;
+    color: #d18b19;
+    font-weight: 700;
+  }
+  .leaderboard-table tbody tr {
+    border-bottom: 1px solid #ffe299;
+  }
+  .leaderboard-table .customer-name {
+    font-weight: 600;
+    color: #d18319;
+    font-size: 1.09rem;
+  }
+  .leaderboard-table .customer-id {
+    color: #aaa;
+    font-size: 0.93rem;
+    font-weight: 400;
+    margin-top: 2px;
+  }
+  .leaderboard-table .spend {
+    font-size: 1.12rem;
+    font-weight: 700;
+    color: #ffad26;
+    letter-spacing: 1px;
+  }
+  .leaderboard-table .badge-block {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+  }
+  .leaderboard-table .badge-icon {
+    width: 41px;
+    height: 41px;
+    border-radius: 50%;
+    box-shadow: 0 0 5px #ffe05b44;
+    background: #f9e48f;
+    object-fit: contain;
+    border: 2px solid #ffe57988;
+  }
+  .leaderboard-table .badge-label {
+    display: inline-block;
+    font-size: 1.05rem;
+    font-weight: bold;
+    color: #ffba24;
+    text-shadow: 0 0 1px #fff7c9;
+  }
+  .rank-icon {
+    position: relative;
+    min-width: 68px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon-sticker-no1 {
+  position: static;
+  width: 32px;
+  margin-right: 2px;
+  vertical-align: middle;
+  top: unset; left: unset;
+  }
+  .icon-cup {
+    width: 28px;
+    position: absolute;
+    left: 20px;
+    top: -4px;
+  }
+  .rank-number {
+    font-weight: 700;
+    font-size: 1.09rem;
+    color: #e5b620;
+    margin-left: 54px;
+  }
+  .icon-fire {
+    width: 26px;
+    vertical-align: middle;
+    margin-bottom: 10px;
+    margin-right: -8px;
+  }
+  .btn-xem-them {
+    background: none;
+    border: none;
+    outline: none;
+    margin: 16px auto 0;
+    display: block;
+  }
+  .btn-xem-them img {
+    width: 140px;
+  }
+  .leaderboard-mascot {
+width: 92px;
+  position: absolute;
+  bottom: 16px;  /* Xa xuống một chút */
+  right: -30px;   /* Xa phải hơn, tăng số px này tuỳ ý */
+
+  }
+  @media (max-width: 800px) {
+    .leaderboard-root {
+      width: 99vw;
+      padding: 10px 1vw 60px;
+    }
+    .leaderboard-title {
+      font-size: 1.4rem;
+    }
+    .leaderboard-subtitle {
+      font-size: 1.5rem;
+    }
+    .leaderboard-mascot {
+      right: 4vw;
+    }
+  }
+  @media (max-width: 600px) {
+  .leaderboard-table, .leaderboard-table thead, .leaderboard-table tbody, .leaderboard-table tr, .leaderboard-table th, .leaderboard-table td {
+    display: block;
+    width: 100%;
+  }
+  .leaderboard-table thead {
+    display: none;
+  }
+  .leaderboard-table tr {
+    background: rgba(255,255,255,0.86);
+    margin-bottom: 14px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px #ffd67e22;
+    padding: 10px 8px 4px 8px;
+  }
+  .leaderboard-table td {
+    border: none;
+    text-align: left;
+    padding: 4px 0 4px 8px;
+    font-size: 1.04rem;
+  }
+  .badge-block { justify-content: flex-start !important; }
+}
+@media (max-width: 600px) {
+  .leaderboard-table tr {
+    text-align: center !important;
+    display: flex !important;
+    flex-direction: column;
+    align-items: center !important;
+    justify-content: center;
+  }
+  .leaderboard-table td {
+    text-align: center !important;
+    width: 100%;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    justify-content: center;
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+  }
+  .customer-name, .spend-amount, .badge-label, .customer-id {
+    text-align: center !important;
+    width: 100%;
+    margin: 0 auto;
+    justify-content: center;
+  }
+  .badge-block {
+    justify-content: center !important;
+  }
+}
+@media (max-width: 600px) {
+  .leaderboard-title-block {
+    text-align: center !important;
+    position: relative;
+    min-height: 56px;
+  }
+  .leaderboard-crown {
+    position: absolute !important;
+    left: 12px !important;
+    top: -8px !important;
+    transform: none !important;
+    width: 38px !important;
+    z-index: 3;
+    display:none
+  }
+}
+.label-mobile {
+  display: none;
+}
+@media (max-width: 600px) {
+  .label-mobile {
+    display: inline-block;
+    font-size: 0.95em;
+    color: #c69c48;
+    font-weight: 600;
+    margin-right: 3px;
+  }
+  .leaderboard-table td {
+    text-align: center !important;
+  }
+}
+
+</style>
+
+<!-- 3. JS - LOAD CSV + RENDER ALL EFFECTS + “XEM THÊM” -->
+<script>
+  // =========================== CONFIG LINK ẢNH ===========================
+  const LINK_CROWN        = "https://file.hstatic.net/200001023438/file/crown.png";
+  const LINK_FIRE         = "https://file.hstatic.net/200001023438/file/fire.png";
+  const LINK_XEM_THEM     = "https://file.hstatic.net/200001023438/file/xem_th_m.png";
+  const LINK_MASCOT       = "https://file.hstatic.net/200001023438/file/mascot.png";
+  const LINK_LEADERBOARD_BG = "https://file.hstatic.net/200001023438/file/leaderboard.png";
+  const LINK_EFFECT_VANG  = "https://file.hstatic.net/200001023438/file/effect_v_ng.png";
+  const LINK_STICKER_NO1  = "https://file.hstatic.net/200001023438/file/sticker.png";
+  const LINK_CUP1         = "https://file.hstatic.net/200001023438/file/cup-1.png";
+  const LINK_CUP2         = "https://file.hstatic.net/200001023438/file/cup-2.png";
+  const LINK_CUP3         = "https://file.hstatic.net/200001023438/file/cup-3.png";
+  const LINK_BADGE_DONG   = "https://file.hstatic.net/200001023438/file/badge-dong.png";
+  const LINK_BADGE_BAC    = "https://file.hstatic.net/200001023438/file/badge-bac.png";
+  const LINK_BADGE_VANG   = "https://file.hstatic.net/200001023438/file/badge-vang.png";
+  const LINK_BADGE_KIMCUONG = "https://file.hstatic.net/200001023438/file/badge-kimcuong.png";
+
+  // ============== CẤU HÌNH GOOGLE SHEET CSV
+  const csvUrl = 'https://docs.google.com/spreadsheets/d/1PVaV3w17lzE8xbSbw9HShDq073xlqL_SrgwBYYozn6k/export?format=csv&id=1PVaV3w17lzE8xbSbw9HShDq073xlqL_SrgwBYYozn6k&gid=0';
+
+  // ============= HÀM ĐỔI LINK ẢNH (replace tất cả 'LINK_...' ở trên!) ===========
+  document.querySelectorAll('.leaderboard-root, .leaderboard-root *').forEach(el => {
+  if(el.style.background) el.style.background = el.style.background
+    .replace('LINK_LEADERBOARD_BG', LINK_LEADERBOARD_BG)
+    .replace('LINK_EFFECT_VANG', LINK_EFFECT_VANG);
+  });
+  document.querySelector('.leaderboard-crown').src   = LINK_CROWN;
+  document.querySelector('.leaderboard-fire-corner').src = LINK_FIRE;
+  document.querySelector('.leaderboard-mascot').src  = LINK_MASCOT;
+  document.querySelector('.btn-xem-them img').src    = LINK_XEM_THEM;
+
+  // ===================== JS LOAD DATA, RENDER BẢNG
+  let showRows = 5;
+  let allRows = [];
+  const badge = {
+  dong:     LINK_BADGE_DONG,
+  bac:      LINK_BADGE_BAC,
+  vang:     LINK_BADGE_VANG,
+  kimcuong: LINK_BADGE_KIMCUONG,
+  };
+  const badgeByRank = (spent) => {
+  if(spent >= 12000000) return {src: badge.kimcuong, name: 'Kim cương'};
+  if(spent >= 5000000)  return {src: badge.vang, name: 'Vàng'};
+  if(spent >= 2000000)  return {src: badge.bac, name: 'Bạc'};
+  return {src: badge.dong, name: 'Đồng'};
+  };
+  const cup = [LINK_CUP1, LINK_CUP2, LINK_CUP3];
+
+  fetch(csvUrl)
+  .then(r => r.text())
+  .then(text => {
+    // Parse CSV
+    const rows = text.trim().split('\n').map(row => row.split(','));
+    allRows = [];
+    for(let i=1; i<rows.length && i<=20; i++) {
+      let [rank, customer_id, name, email, orders, spent, spent_human, member_rank] = rows[i];
+      spent = Number(spent.replace(/[^0-9]/g, '') || 0);
+      if(!name || name.trim()==='') continue; // loại khách không tên
+      allRows.push({ rank, customer_id, name, email, orders, spent, spent_human, member_rank });
+    }
+    renderLeaderboard();
+    if(allRows.length > showRows) document.getElementById('btn-xem-them').style.display = '';
+  })
+  .catch(e => {
+    document.getElementById('leaderboard-body').innerHTML = `<tr><td colspan="5" style="color:#f00;">Lỗi tải dữ liệu!</td></tr>`;
+  });
+
+function renderLeaderboard() {
+  const body = document.getElementById('leaderboard-body');
+  body.innerHTML = '';
+  for(let i=0; i<allRows.length && i<showRows; i++) {
+    const row = allRows[i];
+    const badgeInfo = badgeByRank(row.spent);
+    body.innerHTML += `
+      <tr>
+        <td>
+          <div class="rank-icon">
+            ${i < 3 ? `<img src="${cup[i]}" class="icon-cup" />` : ''}
+            <span class="rank-number">${row.rank}</span>
+          </div>
+        </td>
+        <td style="text-align:left;">
+          ${i === 0 ? `<img src="${LINK_STICKER_NO1}" class="icon-sticker-no1" />` : ''}
+          <span class="label-mobile">Tên khách:</span>
+          <span title="${row.email}" class="customer-name">${row.name ? row.name : '(Không tên)'}</span>
+          <div class="customer-id">${row.customer_id}</div>
+        </td>
+        <td>
+          <span class="label-mobile">Số đơn hàng:</span>
+          ${row.orders}
+        </td>
+        <td class="spend">
+          ${i === 0 ? `<img src="${LINK_FIRE}" class="icon-fire" />` : ''}
+          <span class="label-mobile">Tổng chi tiêu:</span>
+          <span class="spend-amount">${
+            row.spent_human 
+              ? row.spent_human.trim().replace(/đ+$/, '').trim() + ' đ'
+              : row.spent.toLocaleString() + ' đ'
+          }</span>
+        </td>
+        <td>
+          <div class="badge-block">
+            <img src="${badgeInfo.src}" alt="badge ${badgeInfo.name}" class="badge-icon" />
+            <span class="badge-label">${badgeInfo.name}</span>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+  if(body.innerHTML.trim() === '') {
+    body.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;">Không có dữ liệu.</td></tr>`;
+  }
+}
+
+  // Sự kiện XEM THÊM (hoạt động)
+  document.getElementById('btn-xem-them').onclick = function() {
+  showRows = allRows.length;
+  renderLeaderboard();
+  this.style.display = 'none';
+  };
+  // Giả sử customerId là mã khách cần kiểm tra
+let customerId = '1147202707'; // Gán động từ thông tin user đăng nhập nếu có
+
+let userRow = allRows.find(row => row.customer_id == customerId);
+
+let infoHTML = "";
+if (userRow) {
+  infoHTML = `
+    <div>Bạn đang ở <span class="top-label">Top ${userRow.rank}</span> tháng này!</div>
+    <div>Tổng chi tiêu: <span class="spent-label">${userRow.spent_human ? userRow.spent_human : userRow.spent.toLocaleString()} đ</span></div>
+  `;
+} else {
+  infoHTML = `
+    <div>Bạn hiện đang <b>ngoài Top 20</b> tháng này.</div>
+    <div>Hãy tăng chi tiêu để vào bảng vàng!</div>
+  `;
+}
+document.getElementById('your-rank-info').innerHTML = infoHTML;
+</script>
