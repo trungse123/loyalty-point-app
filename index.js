@@ -49,7 +49,7 @@ app.post('/webhook/order', async (req, res) => {
     const customer = order.customer || {};
     const billing = order.billing_address || {};
     const phone = customer.phone || billing.phone;
-    const email = customer.email || 'Không có email';
+    const email = customer.email || null;
     const order_id = order.id?.toString();
     const total = parseInt(order.total_price || 0);
     const points = Math.floor(total / 100);
@@ -121,6 +121,10 @@ app.post('/redeem', async (req, res) => {
     const user = await UserPoints.findOne({ phone });
     if (!user || user.total_points < points) {
       return res.status(400).json({ error: 'Không đủ điểm để đổi' });
+    }
+
+    if (!user.email) {
+      return res.status(400).json({ error: 'Người dùng chưa có email, không thể tạo voucher' });
     }
 
     const code = 'VOUCHER-' + crypto.randomBytes(3).toString('hex').toUpperCase();
