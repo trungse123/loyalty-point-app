@@ -7,20 +7,14 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// === CONFIG ===
 const SHOP = 'neko-chin-shop-5.myharavan.com';
 const ACCESS_TOKEN = 'DFE528F8C4CBA1B43727A729CD57187766E059E88AE96682DC2CF04AF4F61306';
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://admin:admin1234@cluster0.edubkxs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
 // === MONGODB CONNECT ===
 mongoose.connect(MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-  .then(() => console.log('✅ Đã kết nối MongoDB'))
-  .catch((err) => console.error('❌ Lỗi kết nối MongoDB:', err.message));
-
-// === MIDDLEWARE ===
+  useNewUrlParser: true, useUnifiedTopology: true
+});
 app.use(cors());
 app.use(express.json());
 
@@ -29,6 +23,7 @@ const UserPointsSchema = new mongoose.Schema({
   phone: { type: String, unique: true },
   email: String,
   total_points: { type: Number, default: 0 },
+  referred_by: String, // <-- Trường này lưu mã người giới thiệu
   history: [
     {
       order_id: String,
@@ -38,46 +33,56 @@ const UserPointsSchema = new mongoose.Schema({
   ],
   missions: [
     {
-      mission_key: String,   // daily_login, review_product, share_fb, referral
+      mission_key: String,
       date: Date,
       points: Number,
       referral_by: String,
       referral_to: String
     }
-  ],
-  referred_by: String,              // Mã bạn nhập
-  referral_rewarded: { type: Boolean, default: false } // Đã nhận điểm referral lần đầu chưa
+  ]
 });
 const UserPoints = mongoose.model('UserPoints', UserPointsSchema);
 
-// === BẢNG NHIỆM VỤ (chỉ dùng cho nhiệm vụ khác, không ref) ===
+// === NHIỆM VỤ HỆ THỐNG (giữ logic cũ) ===
 const MissionList = [
-  { key: 'daily_login',      type: 'daily',    name: 'Đăng nhập mỗi ngày',        points: 100,   max_per_day: 1 },
-  { key: 'share_fb',         type: 'daily',    name: 'Chia sẻ website lên Facebook', points: 150,   max_per_day: 1 },
-  { key: 'review_product',   type: 'daily',    name: 'Đánh giá sản phẩm',         points: 300,   max_per_day: 3 },
-  { key: 'monthly_order',    type: 'monthly',  name: 'Hoàn thành 5 đơn hàng trong tháng', points: 2000,  max_per_month: 1 },
-  { key: 'monthly_review',   type: 'monthly',  name: 'Đánh giá 5 sản phẩm trong tháng',   points: 1500,  max_per_month: 1 },
+  { key: 'daily_login', type: 'daily', name: 'Đăng nhập mỗi ngày', points: 100, max_per_day: 1,
+    check: async (user) => true },
+  { key: 'share_fb', type: 'daily', name: 'Chia sẻ website lên Facebook', points: 150, max_per_day: 1,
+    check: async (user) => true },
+  { key: 'review_product', type: 'daily', name: 'Đánh giá sản phẩm', points: 300, max_per_day: 3,
+    check: async (user) => false // TODO: Tích hợp thực tế
+  },
+  { key: 'monthly_order', type: 'monthly', name: 'Hoàn thành 5 đơn hàng trong tháng', points: 2000, max_per_month: 1,
+    check: async (user) => {
+      const now = new Date();
+      const thisMonthOrders = (user.history||[]).filter(h =>
+        h.timestamp.getMonth() === now.getMonth() &&
+        h.timestamp.getFullYear() === now.getFullYear() &&
+        !h.order_id.startsWith('REDEEM')
+      );
+      return thisMonthOrders.length >= 5;
+    }
+  },
+  { key: 'monthly_review', type: 'monthly', name: 'Đánh giá 5 sản phẩm trong tháng', points: 1500, max_per_month: 1,
+    check: async (user) => false // TODO
+  },
+  { key: 'referral', type: 'special', name: 'Mời bạn bè đặt đơn đầu tiên (cả 2 cùng nhận)', points: 5000, max_per_day: 10,
+    check: async (user, { referral_code }) => false // CHỐT: xử lý bằng webhook đơn hàng!
+  }
 ];
 
-// === API: ĐĂNG KÝ MÃ GIỚI THIỆU ===
+// === API nhập mã giới thiệu: chỉ lưu mã, không cộng điểm ===
 app.post('/referral-code', async (req, res) => {
   const { phone, referral_code } = req.body;
-  if (!phone || !referral_code || phone === referral_code) {
+  if (!phone || !referral_code || phone === referral_code)
     return res.status(400).json({ error: 'Mã không hợp lệ!' });
-  }
-  try {
-    const user = await UserPoints.findOne({ phone });
-    if (!user) return res.status(404).json({ error: 'Không tìm thấy user' });
-    if (user.referred_by) return res.status(400).json({ error: 'Bạn đã nhập mã rồi!' });
-    // Kiểm tra mã tồn tại
-    const refUser = await UserPoints.findOne({ phone: referral_code });
-    if (!refUser) return res.status(400).json({ error: 'Mã giới thiệu không hợp lệ!' });
-    user.referred_by = referral_code;
-    await user.save();
-    res.json({ message: "Đã nhập mã thành công! Bạn sẽ nhận điểm khi đặt đơn đầu tiên." });
-  } catch (e) {
-    res.status(500).json({ error: 'Lỗi server khi nhập mã.' });
-  }
+  let user = await UserPoints.findOne({ phone });
+  if (!user) return res.status(404).json({ error: 'Không tìm thấy user!' });
+  if (user.referred_by)
+    return res.status(400).json({ error: 'Bạn đã nhập mã giới thiệu trước đó!' });
+  user.referred_by = referral_code;
+  await user.save();
+  res.json({ message: 'Nhập mã thành công! Khi bạn đặt đơn đầu tiên, cả 2 sẽ nhận điểm.' });
 });
 
 // === API: TRA CỨU ĐIỂM ===
@@ -105,10 +110,11 @@ app.get('/missions', async (req, res) => {
   const { phone } = req.query;
   const user = await UserPoints.findOne({ phone });
   if (!user) return res.status(404).json({ error: 'Không tìm thấy user' });
+
   const today = new Date().toLocaleDateString();
   const now = new Date();
 
-  const missionStates = MissionList.map(mission => {
+  const missionStates = await Promise.all(MissionList.map(async mission => {
     if (mission.type === 'daily') {
       const count = (user.missions || []).filter(m =>
         m.mission_key === mission.key &&
@@ -124,34 +130,41 @@ app.get('/missions', async (req, res) => {
       ).length;
       return { ...mission, completed_this_month: count >= (mission.max_per_month || 1) };
     }
+    if (mission.type === 'special') {
+      // Check nếu user đã từng nhận mời bạn trong ngày
+      const count = (user.missions || []).filter(m =>
+        m.mission_key === mission.key &&
+        new Date(m.date).toLocaleDateString() === today
+      ).length;
+      return { ...mission, completed_today: count >= (mission.max_per_day || 10) };
+    }
     return mission;
-  });
-  // Bổ sung nhiệm vụ referral
-  missionStates.push({
-    key: 'referral',
-    type: 'special',
-    name: 'Mời bạn bè đặt đơn đầu tiên (cả 2 cùng nhận)',
-    points: 5000,
-    completed: user.referral_rewarded,
-    my_ref_code: user.phone,
-    referred_by: user.referred_by
-  });
+  }));
   res.json(missionStates);
 });
 
-// === API: HOÀN THÀNH NHIỆM VỤ KHÁC (KHÔNG PHẢI referral) ===
+// === API: HOÀN THÀNH NHIỆM VỤ === (giữ logic cũ, nhiệm vụ referral sẽ không nhận được bằng API này)
 app.post('/missions/complete', async (req, res) => {
-  const { phone, mission_key } = req.body;
-  if (!phone || !mission_key) return res.status(400).json({ error: 'Thiếu thông tin' });
-  if (mission_key === 'referral') return res.status(400).json({ error: 'Dùng endpoint /referral-code để nhập mã!' });
-
+  const { phone, mission_key, referral_code } = req.body;
   const mission = MissionList.find(m => m.key === mission_key);
   if (!mission) return res.status(400).json({ error: 'Nhiệm vụ không tồn tại' });
+
+  // Không cho phép nhận nhiệm vụ referral qua API
+  if (mission.key === 'referral') {
+    return res.status(400).json({ error: 'Hãy nhập mã giới thiệu và mua đơn đầu tiên để nhận điểm nhiệm vụ này!' });
+  }
+
   const user = await UserPoints.findOne({ phone });
   if (!user) return res.status(404).json({ error: 'Không tìm thấy user' });
 
   const now = new Date();
-  // Check giới hạn nhiệm vụ (daily, monthly)
+
+  let isEligible = false;
+  try {
+    isEligible = await mission.check(user, { referral_code });
+  } catch { isEligible = false; }
+  if (!isEligible) return res.status(400).json({ error: 'Bạn chưa hoàn thành đủ điều kiện nhiệm vụ!' });
+
   if (mission.type === 'daily') {
     const doneToday = (user.missions || []).filter(m =>
       m.mission_key === mission_key &&
@@ -172,15 +185,15 @@ app.post('/missions/complete', async (req, res) => {
     }
   }
 
-  // Cộng điểm + lưu lịch sử
   user.total_points += mission.points;
   user.missions = user.missions || [];
   user.missions.push({ mission_key, date: now, points: mission.points });
   await user.save();
+
   res.json({ message: 'Nhận thưởng thành công', points: mission.points, total_points: user.total_points });
 });
 
-// === WEBHOOK: ĐƠN HÀNG HARAVAN ===
+// === WEBHOOK: ĐƠN HÀNG HARAVAN – Xử lý nhiệm vụ referral tại đây! ===
 app.post('/webhook/order', async (req, res) => {
   try {
     const order = req.body;
@@ -195,10 +208,8 @@ app.post('/webhook/order', async (req, res) => {
     const paid = order.financial_status === 'paid';
     const fulfilled = ['fulfilled', 'delivered'].includes(order.fulfillment_status);
 
-    if (!phone || !paid || !fulfilled) {
+    if (!phone || !paid || !fulfilled)
       return res.status(200).send('❌ Bỏ qua đơn không hợp lệ');
-    }
-
     let user = await UserPoints.findOne({ phone });
     if (user) {
       const existed = user.history.find(h => h.order_id === order_id);
@@ -216,38 +227,31 @@ app.post('/webhook/order', async (req, res) => {
       });
     }
 
-    // ==== LOGIC ĐIỂM REFERRAL ====
-    if (user.referred_by && !user.referral_rewarded) {
-      const validOrders = (user.history || []).filter(h => !h.order_id.startsWith('REDEEM'));
-      if (validOrders.length === 1) { // Đơn đầu tiên
-        // Cộng điểm cho user
+    // ====== XỬ LÝ NHIỆM VỤ REFERRAL (CHỈ CỘNG 1 LẦN, đơn đầu tiên) ======
+    if (user.referred_by) {
+      const nonRedeemOrders = (user.history || []).filter(h => !h.order_id.startsWith('REDEEM'));
+      const alreadyReferralMission = (user.missions || []).find(m => m.mission_key === 'referral');
+      if (nonRedeemOrders.length === 1 && !alreadyReferralMission) {
+        // Cộng điểm cho người được mời
         user.total_points += 5000;
         user.missions = user.missions || [];
-        user.missions.push({
-          mission_key: 'referral',
-          date: new Date(),
-          points: 5000,
-          referral_by: user.referred_by
-        });
-        user.referral_rewarded = true;
+        user.missions.push({ mission_key: 'referral', date: new Date(), points: 5000, referral_by: user.referred_by });
         await user.save();
-
-        // Cộng điểm cho người giới thiệu
-        const inviter = await UserPoints.findOne({ phone: user.referred_by });
-        if (inviter) {
-          inviter.total_points += 5000;
-          inviter.missions = inviter.missions || [];
-          inviter.missions.push({
-            mission_key: 'referral',
-            date: new Date(),
-            points: 5000,
-            referral_to: phone
-          });
-          await inviter.save();
+        // Cộng điểm cho người mời
+        if (user.referred_by && user.referred_by !== user.phone) {
+          const inviter = await UserPoints.findOne({ phone: user.referred_by });
+          if (inviter) {
+            const alreadyGot = (inviter.missions || []).find(m => m.mission_key === 'referral' && m.referral_to === user.phone);
+            if (!alreadyGot) {
+              inviter.total_points += 5000;
+              inviter.missions = inviter.missions || [];
+              inviter.missions.push({ mission_key: 'referral', date: new Date(), points: 5000, referral_to: user.phone });
+              await inviter.save();
+            }
+          }
         }
       }
     }
-
     res.status(200).send('Đã xử lý xong');
   } catch (err) {
     res.status(500).send('Lỗi webhook');
@@ -270,7 +274,6 @@ app.post('/redeem', async (req, res) => {
     }
     const code = 'VOUCHER-' + crypto.randomBytes(3).toString('hex').toUpperCase();
     const discountValue = points;
-
     const haravanResponse = await axios.post(
       `https://${SHOP}/admin/discounts.json`,
       {
@@ -292,16 +295,13 @@ app.post('/redeem', async (req, res) => {
         }
       }
     );
-
     user.total_points -= points;
     user.history.push({
       order_id: `REDEEM-${code}`,
       earned_points: -points,
       timestamp: new Date()
     });
-
     await user.save();
-
     res.json({
       message: '🎉 Đổi điểm thành công',
       code,
