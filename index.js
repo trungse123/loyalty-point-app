@@ -103,6 +103,71 @@ const MissionList = [
         }
     }
 ];
+// API LẤY TRẠNG THÁI NHIỆM VỤ (Bản nâng cấp hiển thị tiến độ)
+app.get('/missions', async (req, res) => {
+    const { phone } = req.query;
+    if (!phone) return res.status(400).json({ error: 'Thiếu số điện thoại' });
+    
+    const user = await UserPoints.findOne({ phone });
+    if (!user) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
+
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('vi-VN');
+
+    // Lấy trước dữ liệu cần thiết để tính toán
+    const missionsInMonth = (user.missions || []).filter(m =>
+        new Date(m.date).getMonth() === now.getMonth() &&
+        new Date(m.date).getFullYear() === now.getFullYear()
+    );
+
+    const dailyLoginsInMonth = missionsInMonth.filter(m => m.mission_key === 'daily_login');
+    const reviewsInMonthCount = missionsInMonth.filter(m => m.mission_key === 'review_product').length;
+    const uniqueLoginDays = new Set(dailyLoginsInMonth.map(m => new Date(m.date).getDate())).size;
+
+    const missionStates = await Promise.all(MissionList.map(async (mission) => {
+        let completed_count = 0;
+        let limit = 0;
+        let progress = 0;
+        let progress_limit = 0;
+
+        if (mission.type === 'daily') {
+            completed_count = (user.missions || []).filter(m =>
+                m.mission_key === mission.key &&
+                new Date(m.date).toLocaleDateString('vi-VN') === todayStr
+            ).length;
+            limit = mission.limit_per_day || 1;
+            progress = completed_count;
+            progress_limit = limit;
+        } else if (mission.type === 'monthly') {
+            completed_count = missionsInMonth.filter(m => m.mission_key === mission.key).length;
+            limit = mission.limit_per_month || 1;
+            
+            // Tính toán tiến độ cho từng loại nhiệm vụ tháng
+            if (mission.key.startsWith('monthly_login_')) {
+                progress = uniqueLoginDays;
+                progress_limit = parseInt(mission.key.split('_').pop());
+            } else if (mission.key.startsWith('monthly_review_')) {
+                progress = reviewsInMonthCount;
+                progress_limit = parseInt(mission.key.split('_').pop());
+            }
+        }
+        
+        const can_claim = completed_count < limit && await mission.check(user);
+
+        return { 
+            key: mission.key,
+            name: mission.name,
+            points: mission.points,
+            type: mission.type,
+            can_claim: can_claim,
+            is_completed: completed_count >= limit,
+            progress: progress,
+            progress_limit: progress_limit
+        };
+    }));
+    
+    res.json(missionStates);
+});
 // === WEBHOOK: ĐƠN HÀNG HARAVAN ===
 app.post('/webhook/order', async (req, res) => {
   try {
