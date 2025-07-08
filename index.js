@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-const SHOP = 'nekochin.com';
+const SHOP = 'neko-chin-shop-5.myharavan.com';
 const ACCESS_TOKEN = '8D69E2B91FDF0D073CAC0126CCA36B924276EB0DFF55C7F76097CFD8283920BE';
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://admin:admin1234@cluster0.edubkxs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
@@ -242,7 +242,7 @@ app.post('/redeem', async (req, res) => {
     const discountValue = parsedPoints; // 1 điểm = 1đ
 
     // 2. Chuẩn bị yêu cầu gửi đến Haravan
-    const haravanApiUrl = `https://${SHOP}/admin/api/2020-04/discounts.json`;
+    const haravanApiUrl = `https://${SHOP}/admin/api/2022-10/discounts.json`;
     const discountPayload = {
       discount: {
         code: code,
