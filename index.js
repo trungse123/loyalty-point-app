@@ -37,6 +37,13 @@ const UserPointsSchema = new mongoose.Schema({
       meta: Object
     }
   ]
+   missions: [
+    { 
+      mission_key: String,
+      date: Date,
+      points: Number
+    }
+  ]
 });
 const UserPoints = mongoose.model('UserPoints', UserPointsSchema);
 
@@ -213,6 +220,207 @@ app.post('/points/adjust', async (req, res) => {
     res.status(500).json({ error: 'Lỗi khi cập nhật điểm.' });
   }
 }),
+  const MissionList = [
+  // --- CÁC NHIỆM VỤ HẰNG NGÀY (Giữ nguyên) ---
+  {
+    key: 'daily_login',
+    type: 'daily',
+    name: 'Đăng nhập mỗi ngày',
+    points: 300,
+    limit_per_day: 1,
+    check: async (user) => true
+  },
+  {
+    key: 'share_fb',
+    type: 'daily',
+    name: 'Chia sẻ website lên Facebook',
+    points: 500,
+    limit_per_day: 1,
+    check: async (user) => true
+  },
+  {
+    key: 'review_product',
+    type: 'daily',
+    name: 'Đánh giá sản phẩm đã mua',
+    points: 800,
+    limit_per_day: 3,
+    check: async (user) => true
+  },
+
+  // --- NHIỆM VỤ MỐC THÁNG MỚI ---
+  {
+    key: 'monthly_login_10',
+    type: 'monthly',
+    name: 'Đăng nhập 10 ngày trong tháng',
+    points: 1000,
+    limit_per_month: 1,
+    check: async (user) => {
+      const now = new Date();
+      const missionsInMonth = (user.missions || []).filter(m =>
+        m.mission_key === 'daily_login' &&
+        new Date(m.date).getMonth() === now.getMonth() &&
+        new Date(m.date).getFullYear() === now.getFullYear()
+      );
+      // Đếm số ngày đăng nhập duy nhất
+      const uniqueDays = new Set(missionsInMonth.map(m => new Date(m.date).getDate()));
+      return uniqueDays.size >= 10;
+    }
+  },
+  {
+    key: 'monthly_login_15',
+    type: 'monthly',
+    name: 'Đăng nhập 15 ngày trong tháng',
+    points: 2000,
+    limit_per_month: 1,
+    check: async (user) => {
+      const now = new Date();
+      const missionsInMonth = (user.missions || []).filter(m =>
+        m.mission_key === 'daily_login' &&
+        new Date(m.date).getMonth() === now.getMonth() &&
+        new Date(m.date).getFullYear() === now.getFullYear()
+      );
+      const uniqueDays = new Set(missionsInMonth.map(m => new Date(m.date).getDate()));
+      return uniqueDays.size >= 15;
+    }
+  },
+  {
+    key: 'monthly_login_20',
+    type: 'monthly',
+    name: 'Đăng nhập 20 ngày trong tháng',
+    points: 3000,
+    limit_per_month: 1,
+    check: async (user) => {
+      const now = new Date();
+      const missionsInMonth = (user.missions || []).filter(m =>
+        m.mission_key === 'daily_login' &&
+        new Date(m.date).getMonth() === now.getMonth() &&
+        new Date(m.date).getFullYear() === now.getFullYear()
+      );
+      const uniqueDays = new Set(missionsInMonth.map(m => new Date(m.date).getDate()));
+      return uniqueDays.size >= 20;
+    }
+  },
+  {
+    key: 'monthly_review_5',
+    type: 'monthly',
+    name: 'Đánh giá 5 sản phẩm trong tháng',
+    points: 1000,
+    limit_per_month: 1,
+    check: async (user) => {
+      const now = new Date();
+      const reviewCount = (user.missions || []).filter(m =>
+        m.mission_key === 'review_product' &&
+        new Date(m.date).getMonth() === now.getMonth() &&
+        new Date(m.date).getFullYear() === now.getFullYear()
+      ).length;
+      return reviewCount >= 5;
+    }
+  },
+  {
+    key: 'monthly_review_10',
+    type: 'monthly',
+    name: 'Đánh giá 10 sản phẩm trong tháng',
+    points: 2000,
+    limit_per_month: 1,
+    check: async (user) => {
+      const now = new Date();
+      const reviewCount = (user.missions || []).filter(m =>
+        m.mission_key === 'review_product' &&
+        new Date(m.date).getMonth() === now.getMonth() &&
+        new Date(m.date).getFullYear() === now.getFullYear()
+      ).length;
+      return reviewCount >= 10;
+    }
+  }
+];
+// API HOÀN THÀNH NHIỆM VỤ (Bản nâng cấp hỗ trợ cả nhiệm vụ tháng)
+app.post('/missions/complete', async (req, res) => {
+  const { phone, mission_key } = req.body;
+  if (!phone || !mission_key) return res.status(400).json({ error: 'Thiếu thông tin' });
+
+  const mission = MissionList.find(m => m.key === mission_key);
+  if (!mission) return res.status(404).json({ error: 'Nhiệm vụ không tồn tại' });
+
+  const user = await UserPoints.findOne({ phone });
+  if (!user) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
+
+  // --- LOGIC KIỂM TRA GIỚI HẠN ĐÃ NÂNG CẤP ---
+  const now = new Date();
+  if (mission.type === 'daily') {
+    const todayStr = now.toLocaleDateString('vi-VN');
+    const completed_count = (user.missions || []).filter(m => 
+      m.mission_key === mission.key &&
+      new Date(m.date).toLocaleDateString('vi-VN') === todayStr
+    ).length;
+
+    if (completed_count >= (mission.limit_per_day || 1)) {
+      return res.status(400).json({ error: 'Bạn đã hoàn thành nhiệm vụ này hôm nay rồi!' });
+    }
+  } else if (mission.type === 'monthly') {
+    const completed_count = (user.missions || []).filter(m => 
+      m.mission_key === mission.key &&
+      new Date(m.date).getMonth() === now.getMonth() &&
+      new Date(m.date).getFullYear() === now.getFullYear()
+    ).length;
+
+    if (completed_count >= (mission.limit_per_month || 1)) {
+      return res.status(400).json({ error: 'Bạn đã nhận thưởng cho mốc này trong tháng rồi!' });
+    }
+  }
+  // --- KẾT THÚC LOGIC KIỂM TRA GIỚI HẠN ---
+
+  const is_eligible = await mission.check(user);
+  if (!is_eligible) {
+     return res.status(400).json({ error: 'Bạn chưa đủ điều kiện để nhận thưởng.' });
+  }
+
+  user.total_points += mission.points;
+  user.missions.push({
+    mission_key: mission.key,
+    date: new Date(),
+    points: mission.points
+  });
+  await user.save();
+
+  res.json({ message: `Chúc mừng! Bạn đã nhận được ${mission.points} điểm.`, total_points: user.total_points });
+});
+// WEBHOOK: NHẬN REVIEW MỚI TỪ HARAVAN
+app.post('/webhook/new-review', async (req, res) => {
+  try {
+    const reviewData = req.body;
+    const customerEmail = reviewData.email;
+    const mission = MissionList.find(m => m.key === 'review_product');
+
+    if (!customerEmail || !mission) {
+      return res.status(200).send('Bỏ qua.');
+    }
+
+    const user = await UserPoints.findOne({ email: customerEmail });
+    if (!user) {
+      return res.status(200).send('Không tìm thấy người dùng.');
+    }
+    
+    const todayStr = new Date().toLocaleDateString('vi-VN');
+    const completed_today_count = (user.missions || []).filter(m => 
+      m.mission_key === mission.key &&
+      new Date(m.date).toLocaleDateString('vi-VN') === todayStr
+    ).length;
+
+    if (completed_today_count < mission.limit_per_day) {
+        user.total_points += mission.points;
+        user.missions.push({
+          mission_key: mission.key,
+          date: new Date(),
+          points: mission.points
+        });
+        await user.save();
+    }
+    
+    res.status(200).send('Đã xử lý.');
+  } catch (err) {
+    res.status(500).send('Lỗi xử lý webhook.');
+  }
+});
 // === START SERVER ===
 app.listen(PORT, () => {
   console.log(`✅ Server đang chạy tại http://localhost:${PORT}`);
