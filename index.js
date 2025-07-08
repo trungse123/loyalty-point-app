@@ -36,7 +36,7 @@ const UserPointsSchema = new mongoose.Schema({
       timestamp: Date,
       meta: Object
     }
-  ]
+  ],
    missions: [
     { 
       mission_key: String,
