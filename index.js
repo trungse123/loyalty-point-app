@@ -12,18 +12,7 @@ const SHOP = 'neko-chin-shop-5.myharavan.com';
 const ACCESS_TOKEN = '8D69E2B91FDF0D073CAC0126CCA36B924276EB0DFF55C7F76097CFD8283920BE';
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://admin:admin1234@cluster0.edubkxs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 const REVIEW_BACKEND_URL = 'https://review-backend-dukv.onrender.com'; // <-- Đảm bảo đây là URL chính xác của Backend Đánh giá của bạn
-// --- Cấu hình Email Sender (SMTP) ---
-const EMAIL_USER = process.env.EMAIL_USER || 'trungse123@gmail.com'; // Thay bằng email của bạn
-const EMAIL_PASS = process.env.EMAIL_PASS || 'ggvy ggkb owvb lsdr';   // Thay bằng mật khẩu ứng dụng/tài khoản của bạn
-const HARAVAN_STORE_URL = 'https://neko-chin-shop-5.myharavan.com'; // <-- Đảm bảo đây là URL shop Haravan của bạn
 
-const transporter = nodemailer.createTransport({
-    service: 'gmail', // Hoặc 'Outlook', 'SMTP', v.v.
-    auth: {
-        user: EMAIL_USER,
-        pass: EMAIL_PASS
-    }
-});
 // === MONGODB CONNECT ===
 mongoose.connect(MONGO_URI, {
     useNewUrlParser: true,
@@ -260,69 +249,6 @@ app.post('/webhook/order', async (req, res) => {
         }
 
         console.log(`✅ Cộng ${points} điểm cho: ${phone}`);
-	if (email && order.line_items && order.line_items.length > 0) {
-            const productReviewBlocksHtml = order.line_items.map(item => {
-                // Đảm bảo item.product_handle tồn tại hoặc lấy từ title nếu không có handle
-                const productHandle = item.product_handle || item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-*|-*$/g, '');
-                const productUrl = `${HARAVAN_STORE_URL}/products/${productHandle}`; // Xây dựng URL sản phẩm
-                
-                // Trả về một khối HTML cho mỗi sản phẩm bao gồm tên và nút
-                return `
-                    <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px; background-color: #f9f9f9;">
-                        <h3 style="margin-top: 0; margin-bottom: 10px; font-size: 18px; color: #333;">${item.title} (x${item.quantity})</h3>
-                        <p style="margin-bottom: 15px; font-size: 14px; color: #555;">Hãy chia sẻ trải nghiệm của bạn về sản phẩm này!</p>
-                        <a href="${productUrl}" target="_blank" style="
-                            display: inline-block;
-                            padding: 12px 25px;
-                            background-color: #FF8C00; /* Màu cam thương hiệu */
-                            color: #ffffff;
-                            text-decoration: none;
-                            border-radius: 5px;
-                            font-weight: bold;
-                            font-size: 16px;
-                            text-align: center;
-                            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-                        ">Đánh giá ngay!</a>
-                    </div>
-                `;
-            }).join('');
-
-            const mailOptions = {
-                from: EMAIL_USER,
-                to: email, // Email của khách hàng
-                subject: `Cảm ơn bạn đã mua hàng tại ${SHOP}! Hãy đánh giá sản phẩm nhé ✨`,
-                html: `
-                    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-                        <h2 style="color: #FF8C00; text-align: center; margin-bottom: 25px;">Cảm ơn bạn đã mua hàng tại ${SHOP}!</h2>
-                        <p>Xin chào ${customer.first_name || customer.last_name || 'Quý khách'},</p>
-                        <p>Chúng tôi rất vui vì bạn đã chọn cửa hàng của chúng tôi. Đơn hàng #${order.name} của bạn đã được giao thành công!</p>
-                        <p>Để giúp chúng tôi và những khách hàng khác, bạn có thể dành ít phút để chia sẻ trải nghiệm về sản phẩm đã mua.</p>
-                        
-                        <div style="margin-top: 30px; margin-bottom: 30px;">
-                            ${productReviewBlocksHtml}
-                        </div>
-
-                        <p>Phản hồi của bạn vô cùng quý giá và là động lực để chúng tôi không ngừng cải thiện.</p>
-                        <p>Trân trọng,<br>Đội ngũ ${SHOP}</p>
-                        <div style="text-align: center; margin-top: 20px;">
-                            <img src="https://file.hstatic.net/200001023438/file/thi_t_k__ch_a_c__t_n__32_.png" alt="Cảm ơn" style="width: 150px; height: auto; display: block; margin: 0 auto;">
-                        </div>
-                        <p style="font-size: 12px; color: #999; text-align: center; margin-top: 20px;">Bạn nhận được email này vì đã mua hàng tại ${SHOP}.</p>
-                    </div>
-                `
-            };
-
-            transporter.sendMail(mailOptions, (error, info) => {
-                if (error) {
-                    console.error('❌ Lỗi gửi email nhắc đánh giá:', error);
-                } else {
-                    console.log('✅ Email nhắc đánh giá đã gửi:', info.response);
-                }
-            });
-        } else {
-            console.log('⚠️ Không thể gửi email nhắc đánh giá: Thiếu email khách hàng hoặc sản phẩm trong đơn hàng.');
-        }
-        // --- Kết thúc gửi Email ---
         res.status(200).send('Đã xử lý xong');
     } catch (err) {
         console.error('❌ Webhook lỗi:', err.message);
@@ -566,3 +492,4 @@ app.post('/points/adjust', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`✅ Server đang chạy tại http://localhost:${PORT}`);
 });
+
