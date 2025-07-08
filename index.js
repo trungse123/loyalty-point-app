@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 10000;
 const SHOP = 'neko-chin-shop-5.myharavan.com';
 const ACCESS_TOKEN = '8D69E2B91FDF0D073CAC0126CCA36B924276EB0DFF55C7F76097CFD8283920BE';
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://admin:admin1234@cluster0.edubkxs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+const REVIEW_BACKEND_URL = 'https://review-backend-dukv.onrender.com'; // <-- THÊM DÒNG NÀY
 
 // === MONGODB CONNECT ===
 mongoose.connect(MONGO_URI, {
@@ -117,67 +118,114 @@ const MissionList = [
 app.get('/missions', async (req, res) => {
     const { phone } = req.query;
     if (!phone) return res.status(400).json({ error: 'Thiếu số điện thoại' });
-    
-    const user = await UserPoints.findOne({ phone });
-    if (!user) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
+
+    // Cố gắng tìm người dùng. Nếu không có, tạo một đối tượng user ảo để tính trạng thái nhiệm vụ ban đầu
+    let user = await UserPoints.findOne({ phone });
+    const isNewUser = !user;
+    if (isNewUser) {
+        user = { phone, missions: [], total_points: 0 }; // Tạo user ảo để tính toán
+    }
 
     const now = new Date();
     const todayStr = now.toLocaleDateString('vi-VN');
 
-    // Lấy trước dữ liệu cần thiết để tính toán
+    // Lấy trước dữ liệu cần thiết để tính toán các nhiệm vụ chung
     const missionsInMonth = (user.missions || []).filter(m =>
         new Date(m.date).getMonth() === now.getMonth() &&
         new Date(m.date).getFullYear() === now.getFullYear()
     );
 
     const dailyLoginsInMonth = missionsInMonth.filter(m => m.mission_key === 'daily_login');
-    const reviewsInMonthCount = missionsInMonth.filter(m => m.mission_key === 'review_product').length;
     const uniqueLoginDays = new Set(dailyLoginsInMonth.map(m => new Date(m.date).getDate())).size;
 
+    // --- LẤY SỐ LƯỢNG ĐÁNH GIÁ THỰC TẾ TỪ BACKEND ĐÁNH GIÁ ---
+    let actualReviewsTodayCount = 0;
+    let actualReviewsMonthlyCount = 0;
+    try {
+        const reviewResponse = await axios.get(`${REVIEW_BACKEND_URL}/api/review/count?phone=${phone}`);
+        if (reviewResponse.data) {
+            actualReviewsTodayCount = reviewResponse.data.today || 0;
+            actualReviewsMonthlyCount = reviewResponse.data.monthly || 0;
+        }
+    } catch (error) {
+        console.error('Lỗi khi lấy số lượng review từ Backend Đánh giá:', error.message);
+        // Có thể ghi log lỗi hoặc trả về một trạng thái mặc định (ví dụ: 0 review)
+        // để không làm gián đoạn API chính.
+    }
+    // -----------------------------------------------------------
+
     const missionStates = await Promise.all(MissionList.map(async (mission) => {
-        let completed_count = 0;
-        let limit = 0;
-        let progress = 0;
-        let progress_limit = 0;
+        let claimed_count = 0; // Số lần đã nhận thưởng (đã được ghi vào user.missions)
+        let limit = 0; // Giới hạn số lần có thể nhận thưởng
+        let progress = 0; // Tiến độ hiện tại của nhiệm vụ (ví dụ: 1)
+        let progress_limit = 0; // Giới hạn tiến độ (ví dụ: 3)
+        let is_eligible_to_perform_action = true; // True nếu người dùng có thể thực hiện hành động để hoàn thành nhiệm vụ này
+                                                  // (ví dụ: chưa đăng nhập đủ số lần, chưa share, v.v.)
 
         if (mission.type === 'daily') {
-            completed_count = (user.missions || []).filter(m =>
+            claimed_count = (user.missions || []).filter(m =>
                 m.mission_key === mission.key &&
                 new Date(m.date).toLocaleDateString('vi-VN') === todayStr
             ).length;
             limit = mission.limit_per_day || 1;
-            progress = completed_count;
-            progress_limit = limit;
+
+            if (mission.key === 'review_product') {
+                progress = actualReviewsTodayCount;
+                progress_limit = limit; // 3
+                // is_eligible_to_perform_action: Có thể nhận nếu số review thực tế VƯỢT QUÁ số lần đã nhận thưởng
+                // và tổng số lần nhận thưởng chưa vượt quá giới hạn
+                is_eligible_to_perform_action = (actualReviewsTodayCount > claimed_count) && (claimed_count < limit);
+            } else if (mission.key === 'daily_login') {
+                progress = claimed_count; // Daily login: tiến độ là số lần đã nhận thưởng
+                progress_limit = limit; // 1
+                is_eligible_to_perform_action = (await mission.check(user)) && (claimed_count < limit);
+            } else if (mission.key === 'share_fb') {
+                progress = claimed_count; // Chia sẻ: tiến độ là số lần đã nhận thưởng
+                progress_limit = limit; // 1
+                is_eligible_to_perform_action = (await mission.check(user)) && (claimed_count < limit);
+            }
+
         } else if (mission.type === 'monthly') {
-            completed_count = missionsInMonth.filter(m => m.mission_key === mission.key).length;
-            limit = mission.limit_per_month || 1;
-            
-            // Tính toán tiến độ cho từng loại nhiệm vụ tháng
+            claimed_count = missionsInMonth.filter(m => m.mission_key === mission.key).length;
+            limit = mission.limit_per_month || 1; // Thường là 1 cho nhiệm vụ tháng
+
             if (mission.key.startsWith('monthly_login_')) {
                 progress = uniqueLoginDays;
-                progress_limit = parseInt(mission.key.split('_').pop());
-            } else if (mission.key.startsWith('monthly_review_')) {
-                progress = reviewsInMonthCount;
-                progress_limit = parseInt(mission.key.split('_').pop());
+                progress_limit = parseInt(mission.key.split('_').pop()); // 10 hoặc 15
+                is_eligible_to_perform_action = (await mission.check(user)) && (claimed_count < limit);
+            } else if (mission.key === 'monthly_review_5') {
+                progress = actualReviewsMonthlyCount; // Sử dụng số lượng review thực tế trong tháng
+                progress_limit = parseInt(mission.key.split('_').pop()); // 5
+                // is_eligible_to_perform_action: Đủ điều kiện nhận thưởng nếu số review thực tế đạt ngưỡng VÀ chưa nhận thưởng
+                is_eligible_to_perform_action = (actualReviewsMonthlyCount >= progress_limit) && (claimed_count < limit);
             }
         }
         
-        const can_claim = completed_count < limit && await mission.check(user);
+        // Xác định trạng thái cuối cùng cho frontend
+        let status_for_frontend = 'not_completed';
+        if (claimed_count >= limit) {
+            status_for_frontend = 'claimed'; // Đã nhận thưởng hết số lần cho phép
+        } else if (is_eligible_to_perform_action) {
+            status_for_frontend = 'available_to_claim'; // Đủ điều kiện để nhấn nút "Nhận thưởng"
+        }
+        // Nếu không thuộc 2 trường hợp trên, mặc định là 'not_completed'
 
-        return { 
+        return {
             key: mission.key,
             name: mission.name,
             points: mission.points,
             type: mission.type,
-            can_claim: can_claim,
-            is_completed: completed_count >= limit,
+            status: status_for_frontend, // 'claimed', 'available_to_claim', 'not_completed'
+            can_claim: is_eligible_to_perform_action, // Flag riêng cho Frontend để biết có nên bật nút "Nhận thưởng" không
+            is_claimed: claimed_count >= limit, // Flag để biết đã nhận đủ số lần chưa (hữu ích cho nhiệm vụ chỉ 1 lần)
             progress: progress,
             progress_limit: progress_limit
         };
     }));
-    
+
     res.json(missionStates);
 });
+
 // === WEBHOOK: ĐƠN HÀNG HARAVAN ===
 app.post('/webhook/order', async (req, res) => {
   try {
