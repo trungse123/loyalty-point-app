@@ -51,25 +51,15 @@ const MissionList = [
     // --- Daily Missions ---
     {
         key: 'daily_login', type: 'daily', name: 'Đăng nhập mỗi ngày',
-        points: 300, limit_per_day: 1, check: async () => true
+        points: 300, limit_per_day: 1, check: async () => true // Luôn đủ điều kiện, quan trọng là đã nhận chưa
     },
     {
         key: 'share_fb', type: 'daily', name: 'Chia sẻ website lên Facebook',
-        points: 500, limit_per_day: 1, check: async () => true
+        points: 500, limit_per_day: 1, check: async () => true // Luôn đủ điều kiện, quan trọng là đã nhận chưa
     },
     {
         key: 'review_product', type: 'daily', name: 'Đánh giá sản phẩm đã mua',
-        points: 800, limit_per_day: 3, check: async (user) => {
-            // Nhiệm vụ này không cần check gì đặc biệt ở đây,
-            // việc này đã được Backend Đánh giá thực hiện và gọi API complete.
-            // Tuy nhiên, để tính "tiến độ" hiển thị trên frontend,
-            // chúng ta cần biết user đã đánh giá bao nhiêu lần trong ngày.
-            // Thông tin này cần được backend Đánh giá gửi cùng với lời gọi API complete,
-            // hoặc backend Điểm thưởng phải có cách để tra cứu.
-            // Tạm thời, để API /missions trả về đúng tiến độ, chúng ta sẽ dựa vào
-            // số lần mà backend Đánh giá đã gọi complete.
-            return true; // Giả sử API /missions/complete đã kiểm tra điều kiện này
-        }
+        points: 800, limit_per_day: 3, check: async () => true // Logic check được thực hiện trong API /missions dựa vào số review thực tế
     },
     // --- Monthly Milestone Missions ---
     {
@@ -104,32 +94,27 @@ const MissionList = [
         key: 'monthly_review_5', type: 'monthly', name: 'Đánh giá 5 sản phẩm trong tháng',
         points: 1000, limit_per_month: 1,
         check: async (user) => {
-            const now = new Date();
-            const reviewCount = (user.missions || []).filter(m =>
-                m.mission_key === 'review_product' &&
-                new Date(m.date).getMonth() === now.getMonth() &&
-                new Date(m.date).getFullYear() === now.getFullYear()
-            ).length;
-            return reviewCount >= 5;
+            // Logic check này sẽ được tính dựa trên actualReviewsMonthlyCount trong API /missions
+            // và không cần thực hiện lại ở đây
+            return true;
         }
     }
 ];
-// API LẤY TRẠNG THÁI NHIỆM VỤ (Bản nâng cấp hiển thị tiến độ)
+
+// === API: LẤY TRẠNG THÁI NHIỆM VỤ ===
 app.get('/missions', async (req, res) => {
     const { phone } = req.query;
     if (!phone) return res.status(400).json({ error: 'Thiếu số điện thoại' });
 
-    // Cố gắng tìm người dùng. Nếu không có, tạo một đối tượng user ảo để tính trạng thái nhiệm vụ ban đầu
     let user = await UserPoints.findOne({ phone });
     const isNewUser = !user;
     if (isNewUser) {
-        user = { phone, missions: [], total_points: 0 }; // Tạo user ảo để tính toán
+        user = { phone, missions: [], total_points: 0 };
     }
 
     const now = new Date();
     const todayStr = now.toLocaleDateString('vi-VN');
 
-    // Lấy trước dữ liệu cần thiết để tính toán các nhiệm vụ chung
     const missionsInMonth = (user.missions || []).filter(m =>
         new Date(m.date).getMonth() === now.getMonth() &&
         new Date(m.date).getFullYear() === now.getFullYear()
@@ -149,8 +134,6 @@ app.get('/missions', async (req, res) => {
         }
     } catch (error) {
         console.error('Lỗi khi lấy số lượng review từ Backend Đánh giá:', error.message);
-        // Có thể ghi log lỗi hoặc trả về một trạng thái mặc định (ví dụ: 0 review)
-        // để không làm gián đoạn API chính.
     }
     // -----------------------------------------------------------
 
@@ -159,8 +142,7 @@ app.get('/missions', async (req, res) => {
         let limit = 0; // Giới hạn số lần có thể nhận thưởng
         let progress = 0; // Tiến độ hiện tại của nhiệm vụ (ví dụ: 1)
         let progress_limit = 0; // Giới hạn tiến độ (ví dụ: 3)
-        let is_eligible_to_perform_action = true; // True nếu người dùng có thể thực hiện hành động để hoàn thành nhiệm vụ này
-                                                  // (ví dụ: chưa đăng nhập đủ số lần, chưa share, v.v.)
+        let can_claim = false; // Flag để frontend biết có thể nhấn nút "Nhận thưởng" không
 
         if (mission.type === 'daily') {
             claimed_count = (user.missions || []).filter(m =>
@@ -172,17 +154,14 @@ app.get('/missions', async (req, res) => {
             if (mission.key === 'review_product') {
                 progress = actualReviewsTodayCount;
                 progress_limit = limit; // 3
-                // is_eligible_to_perform_action: Có thể nhận nếu số review thực tế VƯỢT QUÁ số lần đã nhận thưởng
-                // và tổng số lần nhận thưởng chưa vượt quá giới hạn
-                is_eligible_to_perform_action = (actualReviewsTodayCount > claimed_count) && (claimed_count < limit);
-            } else if (mission.key === 'daily_login') {
-                progress = claimed_count; // Daily login: tiến độ là số lần đã nhận thưởng
-                progress_limit = limit; // 1
-                is_eligible_to_perform_action = (await mission.check(user)) && (claimed_count < limit);
-            } else if (mission.key === 'share_fb') {
-                progress = claimed_count; // Chia sẻ: tiến độ là số lần đã nhận thưởng
-                progress_limit = limit; // 1
-                is_eligible_to_perform_action = (await mission.check(user)) && (claimed_count < limit);
+                // can_claim: Có thể nhận nếu số review thực tế lớn hơn số lần đã nhận thưởng
+                // VÀ số lần đã nhận thưởng chưa đạt giới hạn
+                can_claim = (actualReviewsTodayCount > claimed_count) && (claimed_count < limit);
+            } else { // Đối với 'daily_login' và 'share_fb'
+                progress = claimed_count;
+                progress_limit = limit;
+                // can_claim: Có thể nhận nếu điều kiện check của nhiệm vụ là true VÀ chưa nhận thưởng đủ giới hạn
+                can_claim = (await mission.check(user)) && (claimed_count < limit);
             }
 
         } else if (mission.type === 'monthly') {
@@ -192,12 +171,13 @@ app.get('/missions', async (req, res) => {
             if (mission.key.startsWith('monthly_login_')) {
                 progress = uniqueLoginDays;
                 progress_limit = parseInt(mission.key.split('_').pop()); // 10 hoặc 15
-                is_eligible_to_perform_action = (await mission.check(user)) && (claimed_count < limit);
+                // can_claim: Có thể nhận nếu điều kiện check của nhiệm vụ là true VÀ chưa nhận thưởng đủ giới hạn
+                can_claim = (await mission.check(user)) && (claimed_count < limit);
             } else if (mission.key === 'monthly_review_5') {
                 progress = actualReviewsMonthlyCount; // Sử dụng số lượng review thực tế trong tháng
                 progress_limit = parseInt(mission.key.split('_').pop()); // 5
-                // is_eligible_to_perform_action: Đủ điều kiện nhận thưởng nếu số review thực tế đạt ngưỡng VÀ chưa nhận thưởng
-                is_eligible_to_perform_action = (actualReviewsMonthlyCount >= progress_limit) && (claimed_count < limit);
+                // can_claim: Có thể nhận nếu số review thực tế đạt ngưỡng VÀ chưa nhận thưởng đủ giới hạn
+                can_claim = (actualReviewsMonthlyCount >= progress_limit) && (claimed_count < limit);
             }
         }
         
@@ -205,10 +185,9 @@ app.get('/missions', async (req, res) => {
         let status_for_frontend = 'not_completed';
         if (claimed_count >= limit) {
             status_for_frontend = 'claimed'; // Đã nhận thưởng hết số lần cho phép
-        } else if (is_eligible_to_perform_action) {
+        } else if (can_claim) {
             status_for_frontend = 'available_to_claim'; // Đủ điều kiện để nhấn nút "Nhận thưởng"
         }
-        // Nếu không thuộc 2 trường hợp trên, mặc định là 'not_completed'
 
         return {
             key: mission.key,
@@ -216,8 +195,8 @@ app.get('/missions', async (req, res) => {
             points: mission.points,
             type: mission.type,
             status: status_for_frontend, // 'claimed', 'available_to_claim', 'not_completed'
-            can_claim: is_eligible_to_perform_action, // Flag riêng cho Frontend để biết có nên bật nút "Nhận thưởng" không
-            is_claimed: claimed_count >= limit, // Flag để biết đã nhận đủ số lần chưa (hữu ích cho nhiệm vụ chỉ 1 lần)
+            can_claim: can_claim, // TRUE nếu có thể nhấn nút "Nhận thưởng"
+            is_claimed: claimed_count >= limit, // TRUE nếu đã nhận thưởng hết giới hạn (cho những nhiệm vụ chỉ 1 lần)
             progress: progress,
             progress_limit: progress_limit
         };
@@ -225,6 +204,7 @@ app.get('/missions', async (req, res) => {
 
     res.json(missionStates);
 });
+
 
 // === WEBHOOK: ĐƠN HÀNG HARAVAN ===
 app.post('/webhook/order', async (req, res) => {
