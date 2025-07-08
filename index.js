@@ -58,7 +58,17 @@ const MissionList = [
     },
     {
         key: 'review_product', type: 'daily', name: 'Đánh giá sản phẩm đã mua',
-        points: 800, limit_per_day: 3, check: async () => true
+        points: 800, limit_per_day: 3, check: async (user) => {
+            // Nhiệm vụ này không cần check gì đặc biệt ở đây,
+            // việc này đã được Backend Đánh giá thực hiện và gọi API complete.
+            // Tuy nhiên, để tính "tiến độ" hiển thị trên frontend,
+            // chúng ta cần biết user đã đánh giá bao nhiêu lần trong ngày.
+            // Thông tin này cần được backend Đánh giá gửi cùng với lời gọi API complete,
+            // hoặc backend Điểm thưởng phải có cách để tra cứu.
+            // Tạm thời, để API /missions trả về đúng tiến độ, chúng ta sẽ dựa vào
+            // số lần mà backend Đánh giá đã gọi complete.
+            return true; // Giả sử API /missions/complete đã kiểm tra điều kiện này
+        }
     },
     // --- Monthly Milestone Missions ---
     {
