@@ -278,6 +278,9 @@ app.get('/points', async (req, res) => {
 });
 
 // === API: HOÀN THÀNH NHIỆM VỤ & CỘNG ĐIỂM ===
+// ... (các import và cấu hình khác của bạn) ...
+
+// === API: HOÀN THÀNH NHIỆM VỤ & CỘNG ĐIỂM ===
 app.post('/missions/complete', async (req, res) => {
     const { phone, mission_key } = req.body;
     if (!phone || !mission_key) return res.status(400).json({ error: 'Thiếu thông tin' });
@@ -314,8 +317,7 @@ app.post('/missions/complete', async (req, res) => {
         }
     }
 
-    // --- Bổ sung kiểm tra điều kiện cho 'review_product' và 'monthly_review_5' trước khi cộng điểm ---
-    // Đây là bước quan trọng để đảm bảo người dùng thực sự đủ điều kiện
+    // --- Logic kiểm tra đặc biệt cho 'review_product' và 'monthly_review_5' ---
     if (mission.key === 'review_product') {
         // Lấy số lượng review thực tế từ Backend Đánh giá
         let actualReviewsTodayCount = 0;
@@ -333,9 +335,13 @@ app.post('/missions/complete', async (req, res) => {
             m.mission_key === mission.key && new Date(m.date).toLocaleDateString('vi-VN') === todayStr
         ).length;
 
+        // ĐIỀU KIỆN MỚI: Chỉ cho phép nhận thưởng nếu số review thực tế > số lần đã nhận thưởng
+        // và số lần đã nhận thưởng chưa đạt giới hạn hàng ngày.
         if (actualReviewsTodayCount <= claimed_count_today) {
-            return res.status(400).json({ error: 'Bạn chưa hoàn thành đủ số lượng đánh giá để nhận thưởng.' });
+            return res.status(400).json({ error: 'Bạn chưa thực hiện đủ đánh giá để nhận thưởng lần này.' });
         }
+        // Logic `claimed_count_today >= mission.limit_per_day` đã được xử lý ở phần kiểm tra giới hạn chung phía trên.
+
     } else if (mission.key === 'monthly_review_5') {
         // Lấy số lượng review thực tế từ Backend Đánh giá cho tháng
         let actualReviewsMonthlyCount = 0;
@@ -355,11 +361,13 @@ app.post('/missions/complete', async (req, res) => {
             new Date(m.date).getFullYear() === now.getFullYear()
         ).length;
 
+        // ĐIỀU KIỆN MỚI: Chỉ cho phép nhận thưởng nếu số review thực tế đạt ngưỡng tháng
+        // VÀ chưa nhận thưởng cho mốc tháng này.
         if (actualReviewsMonthlyCount < (mission.progress_limit || 5) || claimed_count_month >= (mission.limit_per_month || 1)) {
              return res.status(400).json({ error: 'Bạn chưa hoàn thành đủ số lượng đánh giá tháng hoặc đã nhận thưởng rồi.' });
         }
     } else {
-        // Kiểm tra điều kiện đặc biệt của nhiệm vụ (ví dụ: đăng nhập đủ 10 ngày)
+        // Đối với các nhiệm vụ khác, vẫn dùng mission.check(user)
         const is_eligible_by_mission_check = await mission.check(user);
         if (!is_eligible_by_mission_check) {
             return res.status(400).json({ error: 'Bạn chưa đủ điều kiện để nhận thưởng nhiệm vụ này.' });
@@ -374,6 +382,7 @@ app.post('/missions/complete', async (req, res) => {
 
     res.json({ message: `Chúc mừng! Bạn đã nhận được ${mission.points} điểm từ nhiệm vụ "${mission.name}".`, total_points: user.total_points });
 });
+// ... (các API khác và phần cuối của file app.js) ...
 
 // === API: ĐỔI ĐIỂM LẤY VOUCHER ===
 app.post('/redeem', async (req, res) => {
