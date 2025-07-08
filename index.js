@@ -155,7 +155,9 @@ app.post('/redeem', async (req, res) => {
     user.history.push({
       order_id: `REDEEM-${code}`,
       earned_points: -points,
-      timestamp: new Date()
+      timestamp: new Date(),
+      meta: { // <-- THÊM KHỐI NÀY
+      redeemed_by: admin_user || 'customer' 
     });
 
     await user.save();
