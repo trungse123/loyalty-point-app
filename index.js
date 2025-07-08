@@ -33,7 +33,8 @@ const UserPointsSchema = new mongoose.Schema({
     {
       order_id: String,
       earned_points: Number,
-      timestamp: Date
+      timestamp: Date,
+      meta: Object
     }
   ]
 });
@@ -170,7 +171,46 @@ app.post('/redeem', async (req, res) => {
     res.status(500).json({ error: 'Không tạo được voucher' });
   }
 });
+// ================== API: ADMIN ĐIỀU CHỈNH ĐIỂM ==================
+app.post('/points/adjust', async (req, res) => {
+  // Trong thực tế, bạn cần một lớp bảo mật để xác thực admin
+  const { phone, points_to_adjust, reason, admin_user } = req.body;
 
+  if (!phone || !points_to_adjust || isNaN(points_to_adjust)) {
+    return res.status(400).json({ error: 'Thông tin không hợp lệ.' });
+  }
+
+  try {
+    const user = await UserPoints.findOne({ phone });
+    if (!user) {
+      return res.status(404).json({ error: 'Không tìm thấy người dùng.' });
+    }
+
+    user.total_points += points_to_adjust;
+
+    const historyEntry = {
+      order_id: `ADJUST-${Date.now()}`, // Tạo ID đặc biệt cho hành động điều chỉnh
+      earned_points: points_to_adjust,
+      timestamp: new Date(),
+      meta: {
+        reason: reason || 'Điều chỉnh bởi admin',
+        admin_user: admin_user || 'Không rõ'
+      }
+    };
+
+    user.history.push(historyEntry);
+    await user.save();
+
+    res.json({
+      message: 'Cập nhật điểm thành công!',
+      new_total_points: user.total_points,
+      history_entry: historyEntry
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi khi cập nhật điểm.' });
+  }
+});
 // === START SERVER ===
 app.listen(PORT, () => {
   console.log(`✅ Server đang chạy tại http://localhost:${PORT}`);
