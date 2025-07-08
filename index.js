@@ -1,5 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const axios = require('axios'); // <--- THÊM DÒNG NÀY
 const cors = require('cors');
 const crypto = require('crypto');
 
@@ -220,36 +221,73 @@ app.post('/webhook/order', async (req, res) => {
 });
 
 // ================== API ĐỔI ĐIỂM LẤY VOUCHER ==================
+// ================== API ĐỔI ĐIỂM LẤY VOUCHER (ĐÃ SỬA) ==================
 app.post('/redeem', async (req, res) => {
   const { phone, points } = req.body;
-  if (!phone || !points || isNaN(points)) {
-    return res.status(400).json({ error: 'Thiếu thông tin hoặc điểm không hợp lệ' });
+  const parsedPoints = parseInt(points, 10);
+
+  if (!phone || !parsedPoints || isNaN(parsedPoints) || parsedPoints <= 0) {
+    return res.status(400).json({ error: 'Thiếu thông tin hoặc số điểm không hợp lệ.' });
   }
+
   try {
     const user = await UserPoints.findOne({ phone });
-    if (!user || user.total_points < points) {
-      return res.status(400).json({ error: 'Không đủ điểm để đổi' });
+
+    if (!user || user.total_points < parsedPoints) {
+      return res.status(400).json({ error: 'Không đủ điểm để đổi hoặc không tìm thấy người dùng.' });
     }
-    if (!user.email) {
-      return res.status(400).json({ error: 'Người dùng chưa có email, không thể tạo voucher' });
+
+    // 1. Tạo thông tin cho mã giảm giá
+    const code = 'NEKO-' + crypto.randomBytes(4).toString('hex').toUpperCase();
+    const discountValue = parsedPoints; // 1 điểm = 1đ
+
+    // 2. Chuẩn bị yêu cầu gửi đến Haravan
+    const haravanApiUrl = `https://${SHOP}/admin/api/2020-04/discounts.json`;
+    const discountPayload = {
+      discount: {
+        code: code,
+        discount_type: 'fixed_amount', // Giảm giá theo số tiền cố định
+        value: discountValue.toString(), // Giá trị giảm giá
+        usage_limit: 1, // Chỉ sử dụng 1 lần
+        applies_once_per_customer: true, // Mỗi khách hàng chỉ dùng 1 lần
+        starts_at: new Date().toISOString() // Bắt đầu có hiệu lực ngay lập tức
+      }
+    };
+
+    const haravanHeaders = {
+      'Content-Type': 'application/json',
+      'X-Haravan-Access-Token': ACCESS_TOKEN
+    };
+
+    // 3. Gọi API Haravan để tạo mã
+    // Chúng ta sẽ đặt lời gọi này trong một khối try...catch riêng để xử lý lỗi từ Haravan
+    try {
+      await axios.post(haravanApiUrl, discountPayload, { headers: haravanHeaders });
+    } catch (apiError) {
+      console.error('Lỗi khi tạo mã giảm giá trên Haravan:', apiError.response?.data);
+      return res.status(500).json({ error: 'Không thể tạo mã giảm giá trên hệ thống Haravan.' });
     }
-    const code = 'VOUCHER-' + crypto.randomBytes(3).toString('hex').toUpperCase();
-    const discountValue = points;
-    // Không gọi API Haravan mẫu nữa cho demo!
-    user.total_points -= points;
+
+    // 4. Nếu tạo mã thành công, tiến hành trừ điểm và lưu lịch sử
+    user.total_points -= parsedPoints;
+    if (!user.history) user.history = [];
     user.history.push({
       order_id: `REDEEM-${code}`,
-      earned_points: -points,
+      earned_points: -parsedPoints,
       timestamp: new Date()
     });
     await user.save();
+
+    // 5. Trả về kết quả thành công
     res.json({
-      message: '🎉 Đổi điểm thành công',
-      code,
+      message: '🎉 Đổi điểm thành công! Mã voucher của bạn đã được tạo.',
+      code: code,
       value: `${discountValue}đ`
     });
-  } catch (err) {
-    res.status(500).json({ error: 'Không tạo được voucher' });
+
+  } catch (dbError) {
+    console.error('Lỗi cơ sở dữ liệu:', dbError);
+    res.status(500).json({ error: 'Đã xảy ra lỗi với hệ thống nội bộ.' });
   }
 });
 
