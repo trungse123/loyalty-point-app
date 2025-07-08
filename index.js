@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-const SHOP = 'neko-chin-shop-5.myharavan.com';
+const SHOP = 'nekochin.com';
 const ACCESS_TOKEN = '8D69E2B91FDF0D073CAC0126CCA36B924276EB0DFF55C7F76097CFD8283920BE';
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://admin:admin1234@cluster0.edubkxs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
@@ -264,7 +264,8 @@ app.post('/redeem', async (req, res) => {
     try {
       await axios.post(haravanApiUrl, discountPayload, { headers: haravanHeaders });
     } catch (apiError) {
-      console.error('Lỗi khi tạo mã giảm giá trên Haravan:', apiError.response?.data);
+      // Dòng mới, chi tiết hơn
+console.error('Lỗi chi tiết từ Haravan:', JSON.stringify(apiError.response?.data || apiError.message));
       return res.status(500).json({ error: 'Không thể tạo mã giảm giá trên hệ thống Haravan.' });
     }
 
