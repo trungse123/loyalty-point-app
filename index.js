@@ -46,7 +46,63 @@ const UserPointsSchema = new mongoose.Schema({
   ]
 });
 const UserPoints = mongoose.model('UserPoints', UserPointsSchema);
-
+const MissionList = [
+    // --- Daily Missions ---
+    {
+        key: 'daily_login', type: 'daily', name: 'Đăng nhập mỗi ngày',
+        points: 300, limit_per_day: 1, check: async () => true
+    },
+    {
+        key: 'share_fb', type: 'daily', name: 'Chia sẻ website lên Facebook',
+        points: 500, limit_per_day: 1, check: async () => true
+    },
+    {
+        key: 'review_product', type: 'daily', name: 'Đánh giá sản phẩm đã mua',
+        points: 800, limit_per_day: 3, check: async () => true
+    },
+    // --- Monthly Milestone Missions ---
+    {
+        key: 'monthly_login_10', type: 'monthly', name: 'Đăng nhập 10 ngày trong tháng',
+        points: 1000, limit_per_month: 1,
+        check: async (user) => {
+            const now = new Date();
+            const missionsInMonth = (user.missions || []).filter(m =>
+                m.mission_key === 'daily_login' &&
+                new Date(m.date).getMonth() === now.getMonth() &&
+                new Date(m.date).getFullYear() === now.getFullYear()
+            );
+            const uniqueDays = new Set(missionsInMonth.map(m => new Date(m.date).getDate()));
+            return uniqueDays.size >= 10;
+        }
+    },
+    {
+        key: 'monthly_login_15', type: 'monthly', name: 'Đăng nhập 15 ngày trong tháng',
+        points: 2000, limit_per_month: 1,
+        check: async (user) => {
+            const now = new Date();
+            const missionsInMonth = (user.missions || []).filter(m =>
+                m.mission_key === 'daily_login' &&
+                new Date(m.date).getMonth() === now.getMonth() &&
+                new Date(m.date).getFullYear() === now.getFullYear()
+            );
+            const uniqueDays = new Set(missionsInMonth.map(m => new Date(m.date).getDate()));
+            return uniqueDays.size >= 15;
+        }
+    },
+    {
+        key: 'monthly_review_5', type: 'monthly', name: 'Đánh giá 5 sản phẩm trong tháng',
+        points: 1000, limit_per_month: 1,
+        check: async (user) => {
+            const now = new Date();
+            const reviewCount = (user.missions || []).filter(m =>
+                m.mission_key === 'review_product' &&
+                new Date(m.date).getMonth() === now.getMonth() &&
+                new Date(m.date).getFullYear() === now.getFullYear()
+            ).length;
+            return reviewCount >= 5;
+        }
+    }
+];
 // === WEBHOOK: ĐƠN HÀNG HARAVAN ===
 app.post('/webhook/order', async (req, res) => {
   try {
@@ -116,7 +172,51 @@ app.get('/points', async (req, res) => {
     res.status(500).json({ error: 'Không thể lấy dữ liệu điểm' });
   }
 });
+app.post('/missions/complete', async (req, res) => {
+    const { phone, mission_key } = req.body;
+    if (!phone || !mission_key) return res.status(400).json({ error: 'Thiếu thông tin' });
 
+    const mission = MissionList.find(m => m.key === mission_key);
+    if (!mission) return res.status(404).json({ error: 'Nhiệm vụ không tồn tại' });
+
+    const user = await UserPoints.findOne({ phone });
+    if (!user) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
+
+    const now = new Date();
+    
+    // Kiểm tra giới hạn hoàn thành nhiệm vụ
+    if (mission.type === 'daily') {
+        const todayStr = now.toLocaleDateString('vi-VN');
+        const completed_count = (user.missions || []).filter(m =>
+            m.mission_key === mission.key && new Date(m.date).toLocaleDateString('vi-VN') === todayStr
+        ).length;
+        
+        if (completed_count >= (mission.limit_per_day || 1)) {
+            return res.status(400).json({ error: 'Bạn đã hoàn thành nhiệm vụ này hôm nay rồi!' });
+        }
+    } else if (mission.type === 'monthly') {
+        const completed_count = (user.missions || []).filter(m =>
+            m.mission_key === mission.key && new Date(m.date).getMonth() === now.getMonth() && new Date(m.date).getFullYear() === now.getFullYear()
+        ).length;
+        
+        if (completed_count >= (mission.limit_per_month || 1)) {
+            return res.status(400).json({ error: 'Bạn đã nhận thưởng cho mốc này trong tháng rồi!' });
+        }
+    }
+
+    // Kiểm tra điều kiện đặc biệt của nhiệm vụ
+    const is_eligible = await mission.check(user);
+    if (!is_eligible) {
+        return res.status(400).json({ error: 'Bạn chưa đủ điều kiện để nhận thưởng.' });
+    }
+
+    // Cộng điểm và lưu lịch sử
+    user.total_points += mission.points;
+    user.missions.push({ mission_key: mission.key, date: new Date(), points: mission.points });
+    await user.save();
+
+    res.json({ message: `Chúc mừng! Bạn đã nhận được ${mission.points} điểm.`, total_points: user.total_points });
+});
 // === API: ĐỔI ĐIỂM LẤY VOUCHER ===
 app.post('/redeem', async (req, res) => {
   const { phone, points } = req.body;
