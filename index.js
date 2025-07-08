@@ -384,43 +384,6 @@ app.post('/missions/complete', async (req, res) => {
 
   res.json({ message: `Chúc mừng! Bạn đã nhận được ${mission.points} điểm.`, total_points: user.total_points });
 });
-// WEBHOOK: NHẬN REVIEW MỚI TỪ HARAVAN
-app.post('/webhook/new-review', async (req, res) => {
-  try {
-    const reviewData = req.body;
-    const customerEmail = reviewData.email;
-    const mission = MissionList.find(m => m.key === 'review_product');
-
-    if (!customerEmail || !mission) {
-      return res.status(200).send('Bỏ qua.');
-    }
-
-    const user = await UserPoints.findOne({ email: customerEmail });
-    if (!user) {
-      return res.status(200).send('Không tìm thấy người dùng.');
-    }
-    
-    const todayStr = new Date().toLocaleDateString('vi-VN');
-    const completed_today_count = (user.missions || []).filter(m => 
-      m.mission_key === mission.key &&
-      new Date(m.date).toLocaleDateString('vi-VN') === todayStr
-    ).length;
-
-    if (completed_today_count < mission.limit_per_day) {
-        user.total_points += mission.points;
-        user.missions.push({
-          mission_key: mission.key,
-          date: new Date(),
-          points: mission.points
-        });
-        await user.save();
-    }
-    
-    res.status(200).send('Đã xử lý.');
-  } catch (err) {
-    res.status(500).send('Lỗi xử lý webhook.');
-  }
-});
 // === START SERVER ===
 app.listen(PORT, () => {
   console.log(`✅ Server đang chạy tại http://localhost:${PORT}`);
