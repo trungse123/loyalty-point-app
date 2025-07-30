@@ -378,7 +378,21 @@ app.post('/missions/complete', async (req, res) => {
     // Cộng điểm và lưu lịch sử nhiệm vụ
     user.total_points += mission.points;
     user.missions.push({ mission_key: mission.key, date: new Date(), points: mission.points });
-    await user.save();
+    // Sau khi kiểm tra điều kiện và trước khi save user:
+user.total_points += mission.points;
+// Thêm vào history:
+user.history.push({
+    order_id: `MISSION-${mission.key}-${Date.now()}`,
+    earned_points: mission.points,
+    timestamp: new Date(),
+    meta: {
+        mission_key: mission.key,
+        mission_name: mission.name,
+        type: 'mission'
+    }
+});
+user.missions.push({ mission_key: mission.key, date: new Date(), points: mission.points });
+await user.save();
 
     res.json({ message: `Chúc mừng! Bạn đã nhận được ${mission.points} điểm từ nhiệm vụ "${mission.name}".`, total_points: user.total_points });
 });
