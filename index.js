@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 10000;
 const SHOP = 'neko-chin-shop-5.myharavan.com';
 const ACCESS_TOKEN = '8D69E2B91FDF0D073CAC0126CCA36B924276EB0DFF55C7F76097CFD8283920BE';
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://admin:admin1234@cluster0.edubkxs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
-const REVIEW_BACKEND_URL = 'https://review-backend-dukv.onrender.com'; // <-- Đảm bảo đây là URL chính xác của Backend Đánh giá của bạn
+const REVIEW_BACKEND_URL = 'https://review-backend-90p7.onrender.com'; // <-- Đảm bảo đây là URL chính xác của Backend Đánh giá của bạn
 
 // === MONGODB CONNECT ===
 mongoose.connect(MONGO_URI, {
